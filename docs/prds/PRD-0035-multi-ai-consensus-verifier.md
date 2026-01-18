@@ -1858,11 +1858,11 @@ class SkillAdapter:
 │                    Deployment Strategy                               │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  Phase 1: 로컬 개발 (현재)                                           │
+│  Phase 1: 로컬 개발 (✅ 완료)                                        │
 │  ─────────────────────────────                                      │
-│  - packages/ultimate-debate/ 에 Core Engine 개발                    │
+│  - ultimate-debate/ 서브 레포에 Core Engine (독립 Git)              │
 │  - .claude/skills/ultimate-debate/ 에 Skill Adapter 개발            │
-│  - 직접 경로 import로 사용                                           │
+│  - adapter.py를 통한 경로 import                                     │
 │                                                                      │
 │  Phase 2: PyPI 배포 (선택적)                                         │
 │  ─────────────────────────────                                      │
@@ -1882,29 +1882,36 @@ class SkillAdapter:
 
 ## 9. 체크리스트
 
-### 구현 체크리스트
+### 구현 체크리스트 (2026-01-18 업데이트)
 
-- [ ] 3-Layer Comparison System 구현
-  - [ ] Semantic Comparator (의미 비교)
-  - [ ] Structural Comparator (구조 비교)
-  - [ ] Hash Comparator (해시 비교)
-- [ ] Consensus Protocol 구현
-  - [ ] ConsensusCallManager (4개 트리거)
-  - [ ] ConsensusDecision 로직
-- [ ] Unlimited Debate Engine 구현
-  - [ ] 기본 토론 루프
-  - [ ] 4개 전략 (NORMAL/MEDIATED/SCOPE_REDUCED/PERSPECTIVE_SHIFT)
-  - [ ] ConvergenceTracker
-- [ ] Storage & Chunking 구현
-  - [ ] ChunkManager (청크 로드/저장)
-  - [ ] ContextOptimizer (스냅샷 생성)
-  - [ ] StorageCleaner (자동 정리)
-- [ ] Hybrid Architecture 구현
-  - [ ] packages/ultimate-debate/ Core Engine
-  - [ ] .claude/skills/ultimate-debate/ Skill Adapter
+- [x] 3-Layer Comparison System 구현 (⚠️ 부분 완료)
+  - [x] Semantic Comparator (의미 비교) - `comparison/semantic.py` TF-IDF 구현
+  - [ ] Structural Comparator (구조 비교) - `comparison/structural.py` placeholder
+  - [x] Hash Comparator (해시 비교) - `consensus/protocol.py` 내장
+- [x] Consensus Protocol 구현 (✅ 완료)
+  - [x] ConsensusChecker (4단계 합의) - `consensus/protocol.py`
+  - [x] ConsensusResult 데이터 구조 - FULL/PARTIAL/NO_CONSENSUS
+- [x] Unlimited Debate Engine 구현 (⚠️ 부분 완료)
+  - [x] 5-Phase 토론 루프 - `engine.py`
+  - [x] NORMAL 전략 - `strategies/normal.py`
+  - [ ] MEDIATED 전략 - 파일만 존재
+  - [ ] SCOPE_REDUCED 전략 - 파일만 존재
+  - [ ] PERSPECTIVE_SHIFT 전략 - 파일만 존재
+  - [x] ConvergenceTracker - `consensus/tracker.py`
+- [x] Storage & Chunking 구현 (✅ 완료)
+  - [x] ChunkManager (4-Level 청킹) - `storage/chunker.py`
+  - [x] DebateContextManager (MD 저장) - `storage/context_manager.py`
+  - [ ] StorageCleaner (자동 정리) - 미구현
+- [x] Hybrid Architecture 구현 (✅ 완료)
+  - [x] ultimate-debate/ 서브 레포 Core Engine (독립 Git)
+  - [x] .claude/skills/ultimate-debate/ Skill Adapter
+  - [x] adapter.py 브릿지 패턴
 - [ ] /auto 통합
   - [ ] 자동 끝장토론 트리거
   - [ ] 사용자 인터페이스
+- [ ] 실제 AI 클라이언트 연동
+  - [ ] GPT 클라이언트 (multi-ai-auth 연동)
+  - [ ] Gemini 클라이언트 (multi-ai-auth 연동)
 
 ### 검증 체크리스트
 
@@ -1918,7 +1925,134 @@ class SkillAdapter:
 
 ---
 
-## 10. 참조
+## 10. 구현 상태 (Implementation Status)
+
+> **마지막 업데이트**: 2026-01-18
+
+### 10.1 전체 구현율: 75.5%
+
+| 구성 요소 | 상태 | 구현율 |
+|----------|------|--------|
+| 5-Phase 워크플로우 | ✅ 완료 | 100% |
+| 합의 프로토콜 | ✅ 완료 | 100% |
+| 3-Layer 비교 시스템 | ⚠️ 부분 | 67% |
+| 4가지 전략 | ⚠️ 부분 | 25% |
+| 청킹 시스템 | ✅ 완료 | 100% |
+| Hybrid Architecture | ✅ 완료 | 100% |
+| AI 클라이언트 연동 | ❌ 미구현 | 0% |
+
+### 10.2 스킬-엔진 인과관계 맵
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    SKILL LAYER (Claude Code 통합)                    │
+│                                                                      │
+│   C:\claude\.claude\skills\ultimate-debate\                         │
+│   ├── SKILL.md           (스킬 정의 문서)                            │
+│   └── scripts/                                                       │
+│       ├── main.py        (CLI 진입점)                                │
+│       ├── adapter.py     (★ 핵심 브릿지)                             │
+│       └── debate/        (레거시 fallback)                           │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                    adapter.py   │   레거시 모드
+                    성공 시      │   (fallback)
+                         ┌──────┴──────┐
+                         │             │
+                         ▼             ▼
+┌─────────────────────────────┐  ┌──────────────────────────┐
+│      CORE ENGINE            │  │  LEGACY (debate/)        │
+│  (독립 서브 레포)           │  │  동일 구조, 직접 포함    │
+│                             │  │                          │
+│  C:\claude\ultimate-debate\ │  │  scripts/debate/         │
+│  ├── .git/                  │  │  ├── orchestrator.py     │
+│  ├── src/ultimate_debate/   │  │  ├── consensus_checker.py│
+│  │   ├── engine.py          │  │  └── context_manager.py  │
+│  │   ├── consensus/         │  │                          │
+│  │   ├── comparison/        │  └──────────────────────────┘
+│  │   ├── strategies/        │
+│  │   └── storage/           │
+│  └── tests/                 │
+└─────────────────────────────┘
+                │
+                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        STORAGE (MD 파일)                             │
+│                                                                      │
+│   .claude/debates/{task_id}/                                        │
+│   ├── TASK.md              (작업 정의)                              │
+│   ├── round_00/            (라운드별 저장)                          │
+│   │   ├── claude.md        (Claude 분석)                            │
+│   │   ├── gpt.md           (GPT 분석)                               │
+│   │   ├── gemini.md        (Gemini 분석)                            │
+│   │   ├── CONSENSUS.md     (합의 결과)                              │
+│   │   └── reviews/         (교차 검토)                              │
+│   ├── round_01/                                                     │
+│   └── FINAL.md             (최종 결론)                              │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 10.3 실행 흐름
+
+```
+사용자 실행: /auto --debate "API 리팩토링"
+         │
+         ▼
+┌─────────────────────────────────────┐
+│ main.py (CLI)                       │
+│ 1. adapter.py import 시도           │
+│ 2. CORE_AVAILABLE 확인              │
+└─────────────────────────────────────┘
+         │
+    ┌────┴────┐
+    │         │
+    ▼         ▼
+[성공]     [실패]
+    │         │
+    ▼         ▼
+adapter.py  debate/orchestrator.py
+    │         │
+    └────┬────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│ engine.py (5-Phase)                 │
+│ Phase 1: 병렬 분석 (3 AI)           │
+│ Phase 2: 합의 체크 (Hash)           │
+│ Phase 3: 교차 검토 (if needed)      │
+│ Phase 4: 재토론 (if needed)         │
+│ Phase 5: 최종 전략 결정             │
+└─────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│ ConsensusChecker (protocol.py)      │
+│ - FULL_CONSENSUS: 종료              │
+│ - PARTIAL_CONSENSUS: CROSS_REVIEW   │
+│ - NO_CONSENSUS: DEBATE              │
+└─────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│ ContextManager (storage)            │
+│ - MD 파일 저장                      │
+│ - 4-Level 청킹 로드                 │
+└─────────────────────────────────────┘
+```
+
+### 10.4 다음 단계 (Phase 3)
+
+| 우선순위 | 작업 | 예상 복잡도 |
+|---------|------|------------|
+| P0 | 실제 AI 클라이언트 연동 (multi-ai-auth) | 높음 |
+| P1 | Structural Comparison 구현 | 중간 |
+| P1 | 3가지 추가 전략 구현 | 중간 |
+| P2 | /auto --debate 통합 | 낮음 |
+| P2 | StorageCleaner 구현 | 낮음 |
+
+---
+
+## 11. 참조
 
 - PRD-0035 v3.0 (끝장토론 초안)
 - [Multi-Agent Debate Framework](https://www.emergentmind.com/topics/multiagent-debate-framework)
