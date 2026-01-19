@@ -4,8 +4,9 @@ Google Gemini API 클라이언트.
 Browser OAuth 인증과 연동.
 
 지원 엔드포인트:
-1. Vertex AI (GOOGLE_CLOUD_PROJECT 설정 시) - 권장
-2. Google AI (x-goog-user-project 헤더 사용)
+1. Code Assist (cloudcode-pa.googleapis.com) - 기본값, 설정 불필요
+2. Vertex AI (GOOGLE_CLOUD_PROJECT 설정 시)
+3. Google AI (x-goog-user-project 헤더 사용)
 """
 
 import os
@@ -24,32 +25,31 @@ class GeminiClient(BaseAIClient):
     cloud-platform 스코프의 OAuth 토큰으로 Gemini 모델에 접근합니다.
 
     지원 모드:
-    1. Vertex AI: GOOGLE_CLOUD_PROJECT 환경변수 설정 시 (권장)
-    2. Google AI: x-goog-user-project 헤더 사용
+    1. Code Assist: cloudcode-pa.googleapis.com 사용 (기본값, 설정 불필요)
+    2. Vertex AI: GOOGLE_CLOUD_PROJECT 환경변수 설정 시
+    3. Google AI: x-goog-user-project 헤더 사용
 
     Example:
-        # Vertex AI 모드 (프로젝트 ID 필요)
-        client = GeminiClient(
-            model_name="gemini-2.0-flash",
-            project_id="my-gcp-project"
-        )
-
-        # Google AI 모드 (프로젝트 ID 필요하지만 Vertex AI 불필요)
-        client = GeminiClient(
-            model_name="gemini-2.0-flash",
-            project_id="my-gcp-project",
-            use_vertex_ai=False
-        )
-
+        # Code Assist 모드 (기본값, 설정 불필요!)
+        client = GeminiClient(model_name="gemini-2.0-flash")
         await client.ensure_authenticated()
         result = await client.analyze("코드 리뷰 요청", context)
 
+        # Vertex AI 모드 (프로젝트 ID 필요)
+        client = GeminiClient(
+            model_name="gemini-2.0-flash",
+            project_id="my-gcp-project",
+            use_code_assist=False,
+            use_vertex_ai=True
+        )
+
     Note:
-        두 모드 모두 GOOGLE_CLOUD_PROJECT 환경변수 또는 project_id 인자가 필요합니다.
-        - Vertex AI: 해당 프로젝트에서 Vertex AI API 활성화 필요
-        - Google AI: 해당 프로젝트에서 Generative Language API 활성화 필요
+        Code Assist 모드는 Gemini CLI와 동일한 방식으로 작동합니다.
+        프로젝트 ID 자동 발견으로 추가 설정이 필요 없습니다.
     """
 
+    # Code Assist 엔드포인트 (Gemini CLI와 동일)
+    CODE_ASSIST_BASE = "https://cloudcode-pa.googleapis.com/v1internal"
     # Google AI 엔드포인트 (x-goog-user-project 헤더 필요)
     GOOGLE_AI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -59,16 +59,19 @@ class GeminiClient(BaseAIClient):
         token_store: TokenStore | None = None,
         project_id: str | None = None,
         location: str = "us-central1",
-        use_vertex_ai: bool = True,
+        use_code_assist: bool = True,
+        use_vertex_ai: bool = False,
     ):
         super().__init__(model_name)
         self.token_store = token_store or TokenStore()
         self.provider = GoogleProvider()
         self._token: AuthToken | None = None
+        self._discovered_project_id: str | None = None
 
         # 프로젝트 설정
         self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
         self.location = location
+        self.use_code_assist = use_code_assist
         self.use_vertex_ai = use_vertex_ai
 
         # Vertex AI 모델명 매핑 (일반 모델명 → Vertex AI 모델명)
@@ -79,10 +82,25 @@ class GeminiClient(BaseAIClient):
             "gemini-1.5-pro": "gemini-1.5-pro-002",
         }
 
+        # Code Assist 모델명 매핑
+        self._code_assist_model_map = {
+            "gemini-2.0-flash": "models/gemini-2.0-flash",
+            "gemini-2.0-pro": "models/gemini-2.0-pro",
+            "gemini-1.5-flash": "models/gemini-1.5-flash",
+            "gemini-1.5-pro": "models/gemini-1.5-pro",
+        }
+
     @property
     def vertex_model_name(self) -> str:
         """Vertex AI용 모델 이름 반환"""
         return self._vertex_model_map.get(self.model_name, self.model_name)
+
+    @property
+    def code_assist_model_name(self) -> str:
+        """Code Assist용 모델 이름 반환"""
+        return self._code_assist_model_map.get(
+            self.model_name, f"models/{self.model_name}"
+        )
 
     def get_api_endpoint(self) -> str:
         """API 엔드포인트 URL 반환
@@ -91,14 +109,19 @@ class GeminiClient(BaseAIClient):
             str: generateContent 엔드포인트 URL
 
         Raises:
-            ValueError: project_id가 설정되지 않은 경우
+            ValueError: project_id가 설정되지 않은 경우 (Vertex AI/Google AI 모드)
         """
+        if self.use_code_assist:
+            # Code Assist 엔드포인트 (프로젝트 ID 불필요)
+            return f"{self.CODE_ASSIST_BASE}:generateContent"
+
         if not self.project_id:
             raise ValueError(
                 "Gemini API 사용을 위해 Google Cloud 프로젝트 ID가 필요합니다.\n"
                 "다음 중 하나를 설정하세요:\n"
                 "  1. 환경변수: GOOGLE_CLOUD_PROJECT=your-project-id\n"
-                "  2. 생성자 인자: GeminiClient(project_id='your-project-id')"
+                "  2. 생성자 인자: GeminiClient(project_id='your-project-id')\n"
+                "  3. Code Assist 모드 사용: GeminiClient(use_code_assist=True)"
             )
 
         if self.use_vertex_ai:
@@ -153,6 +176,41 @@ class GeminiClient(BaseAIClient):
         await self.token_store.save(self._token)
         return True
 
+    def _build_request_body(
+        self, contents: list[dict], temperature: float = 0.7, max_tokens: int = 4096
+    ) -> dict:
+        """API 요청 본문 생성
+
+        Args:
+            contents: 콘텐츠 배열
+            temperature: 창의성 조절 (0.0~2.0)
+            max_tokens: 최대 토큰 수
+
+        Returns:
+            dict: 요청 본문
+        """
+        generation_config = {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+            "responseMimeType": "application/json",
+        }
+
+        if self.use_code_assist:
+            # Code Assist API는 request 래퍼와 model 필드 필요
+            return {
+                "model": self.code_assist_model_name,
+                "request": {
+                    "contents": contents,
+                    "generationConfig": generation_config,
+                },
+            }
+        else:
+            # Vertex AI / Google AI 형식
+            return {
+                "contents": contents,
+                "generationConfig": generation_config,
+            }
+
     async def _call_api(
         self, contents: list[dict], temperature: float = 0.7, max_tokens: int = 4096
     ) -> dict:
@@ -175,19 +233,13 @@ class GeminiClient(BaseAIClient):
 
         endpoint_url = self.get_api_endpoint()
         headers = self._get_headers()
+        request_body = self._build_request_body(contents, temperature, max_tokens)
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 endpoint_url,
                 headers=headers,
-                json={
-                    "contents": contents,
-                    "generationConfig": {
-                        "temperature": temperature,
-                        "maxOutputTokens": max_tokens,
-                        "responseMimeType": "application/json",
-                    },
-                },
+                json=request_body,
                 timeout=120.0,
             )
 
@@ -203,7 +255,16 @@ class GeminiClient(BaseAIClient):
                 except Exception:
                     error_detail = response.text
 
-                if self.use_vertex_ai:
+                if self.use_code_assist:
+                    raise PermissionError(
+                        f"Code Assist API 권한 오류: {error_detail}\n\n"
+                        f"해결 방법:\n"
+                        f"  1. /ai-login google 으로 재로그인\n"
+                        f"  2. Google 계정에 Gemini 접근 권한 확인\n"
+                        f"  3. 또는 Vertex AI 모드 사용: use_code_assist=False, "
+                        f"use_vertex_ai=True"
+                    )
+                elif self.use_vertex_ai:
                     api_url = (
                         "https://console.cloud.google.com/apis/library/"
                         "aiplatform.googleapis.com"
@@ -214,7 +275,7 @@ class GeminiClient(BaseAIClient):
                         f"  1. 프로젝트 '{self.project_id}'에서 "
                         f"Vertex AI API 활성화\n"
                         f"     {api_url}\n"
-                        f"  2. 또는 Google AI 모드 사용: use_vertex_ai=False"
+                        f"  2. 또는 Code Assist 모드 사용: use_code_assist=True"
                     )
                 else:
                     api_url = (
@@ -227,7 +288,7 @@ class GeminiClient(BaseAIClient):
                         f"  1. 프로젝트 '{self.project_id}'에서 "
                         f"Generative Language API 활성화\n"
                         f"     {api_url}\n"
-                        f"  2. 또는 Vertex AI 모드 사용: use_vertex_ai=True"
+                        f"  2. 또는 Code Assist 모드 사용: use_code_assist=True"
                     )
 
             response.raise_for_status()

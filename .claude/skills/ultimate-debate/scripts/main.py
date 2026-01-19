@@ -218,25 +218,18 @@ def register_ai_clients(debate) -> list[str]:
 
     # Google (Gemini) 클라이언트 등록
     if token_store.has_valid_token("google"):
-        # GOOGLE_CLOUD_PROJECT 환경변수 확인
-        project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
-        if not project_id:
-            print("[SKIP] Gemini: GOOGLE_CLOUD_PROJECT 환경변수 미설정", file=sys.stderr)
-            print("       Google Cloud 프로젝트 ID를 설정하세요:", file=sys.stderr)
-            print("       [PowerShell] $env:GOOGLE_CLOUD_PROJECT='your-project-id'", file=sys.stderr)
-            print("       프로젝트에서 Vertex AI API 또는 Generative Language API 활성화 필요", file=sys.stderr)
-        else:
-            try:
-                client = GeminiClient(
-                    model_name="gemini-2.0-flash",
-                    token_store=token_store,
-                    project_id=project_id,
-                )
-                debate.register_ai_client("gemini", client)
-                registered.append("gemini (Google)")
-                print(f"[OK] Gemini 클라이언트 등록 완료 (gemini-2.0-flash, project: {project_id})")
-            except Exception as e:
-                print(f"[ERROR] Gemini 클라이언트 등록 실패: {e}", file=sys.stderr)
+        try:
+            # Code Assist 모드 (기본값) - 프로젝트 ID 불필요
+            client = GeminiClient(
+                model_name="gemini-2.0-flash",
+                token_store=token_store,
+                use_code_assist=True,  # cloudcode-pa.googleapis.com 사용
+            )
+            debate.register_ai_client("gemini", client)
+            registered.append("gemini (Google)")
+            print("[OK] Gemini 클라이언트 등록 완료 (gemini-2.0-flash, Code Assist 모드)")
+        except Exception as e:
+            print(f"[ERROR] Gemini 클라이언트 등록 실패: {e}", file=sys.stderr)
     else:
         print("[SKIP] Google 토큰 없음 - /ai-login google 로 로그인 필요")
 
