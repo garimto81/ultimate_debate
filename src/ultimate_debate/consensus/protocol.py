@@ -60,7 +60,9 @@ class ConsensusChecker:
                     "models": [],
                 }
             conclusion_map[hash_value]["count"] += 1
-            conclusion_map[hash_value]["models"].append(analysis.get("model", "unknown"))
+            conclusion_map[hash_value]["models"].append(
+                analysis.get("model", "unknown")
+            )
 
         # Find most common conclusion
         sorted_conclusions = sorted(

@@ -24,7 +24,7 @@ def sample_token():
         access_token="test-access-token",
         refresh_token="test-refresh-token",
         expires_at=datetime.now() + timedelta(days=30),
-        scopes=["chat", "models"]
+        scopes=["chat", "models"],
     )
 
 
@@ -70,10 +70,7 @@ class TestTokenStore:
         # 여러 토큰 저장
         await temp_store.save(sample_token)
 
-        token2 = AuthToken(
-            provider="test2",
-            access_token="token2"
-        )
+        token2 = AuthToken(provider="test2", access_token="token2")
         await temp_store.save(token2)
 
         # 목록 확인
@@ -101,6 +98,7 @@ class TestTokenStore:
     def test_get_valid_token_sync(self, temp_store, sample_token):
         """동기 버전: 유효한 토큰 조회"""
         import asyncio
+
         asyncio.run(temp_store.save(sample_token))
 
         # 유효한 토큰
@@ -111,10 +109,11 @@ class TestTokenStore:
     def test_get_valid_token_expired(self, temp_store):
         """동기 버전: 만료된 토큰은 None 반환"""
         import asyncio
+
         expired_token = AuthToken(
             provider="expired",
             access_token="expired-token",
-            expires_at=datetime.now() - timedelta(days=1)
+            expires_at=datetime.now() - timedelta(days=1),
         )
         asyncio.run(temp_store.save(expired_token))
 
@@ -125,6 +124,7 @@ class TestTokenStore:
     def test_has_valid_token(self, temp_store, sample_token):
         """동기 버전: 유효한 토큰 존재 여부"""
         import asyncio
+
         asyncio.run(temp_store.save(sample_token))
 
         assert temp_store.has_valid_token("test") is True

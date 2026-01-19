@@ -25,6 +25,7 @@ console = Console()
 @dataclass
 class PKCEChallenge:
     """PKCE (Proof Key for Code Exchange) 챌린지."""
+
     code_verifier: str
     code_challenge: str
     code_challenge_method: str = "S256"
@@ -33,6 +34,7 @@ class PKCEChallenge:
 @dataclass
 class OAuthConfig:
     """OAuth 설정."""
+
     client_id: str
     authorization_endpoint: str
     token_endpoint: str
@@ -44,6 +46,7 @@ class OAuthConfig:
 @dataclass
 class TokenResponse:
     """토큰 응답."""
+
     access_token: str
     refresh_token: str | None
     token_type: str
@@ -53,6 +56,7 @@ class TokenResponse:
 
 class OAuthCallbackError(Exception):
     """OAuth Callback 에러."""
+
     pass
 
 
@@ -67,12 +71,12 @@ def generate_pkce_challenge() -> PKCEChallenge:
 
     # code_challenge: code_verifier의 SHA256 해시를 base64url 인코딩
     digest = hashlib.sha256(code_verifier.encode()).digest()
-    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b'=').decode()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
     return PKCEChallenge(
         code_verifier=code_verifier,
         code_challenge=code_challenge,
-        code_challenge_method="S256"
+        code_challenge_method="S256",
     )
 
 
@@ -83,7 +87,7 @@ def find_free_port() -> int:
         int: 사용 가능한 포트 번호
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('localhost', 0))
+        s.bind(("localhost", 0))
         return s.getsockname()[1]
 
 
@@ -104,7 +108,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         # favicon.ico 및 기타 브라우저 자동 요청 무시
-        if parsed.path in ['/favicon.ico', '/robots.txt']:
+        if parsed.path in ["/favicon.ico", "/robots.txt"]:
             self.send_response(204)  # No Content
             self.end_headers()
             return
@@ -112,15 +116,17 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
 
         # 에러 체크
-        if 'error' in params:
-            OAuthCallbackHandler.error = params['error'][0]
-            self._send_error_response(params.get('error_description', ['인증 거부됨'])[0])
+        if "error" in params:
+            OAuthCallbackHandler.error = params["error"][0]
+            self._send_error_response(
+                params.get("error_description", ["인증 거부됨"])[0]
+            )
             return
 
         # 코드 추출
-        if 'code' in params:
-            OAuthCallbackHandler.auth_code = params['code'][0]
-            OAuthCallbackHandler.state = params.get('state', [None])[0]
+        if "code" in params:
+            OAuthCallbackHandler.auth_code = params["code"][0]
+            OAuthCallbackHandler.state = params.get("state", [None])[0]
             self._send_success_response()
         else:
             # code가 없는 요청은 무시 (브라우저 자동 요청 등)
@@ -130,7 +136,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
     def _send_success_response(self):
         """성공 응답 전송."""
         self.send_response(200)
-        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
 
         html = """
@@ -175,7 +181,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
     def _send_error_response(self, message: str):
         """에러 응답 전송."""
         self.send_response(400)
-        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
 
         html = f"""
@@ -238,8 +244,12 @@ class BrowserOAuth:
         token = await oauth.authenticate()
     """
 
-    def __init__(self, config: OAuthConfig, fixed_port: int | None = None,
-                 manual_callback: bool = False):
+    def __init__(
+        self,
+        config: OAuthConfig,
+        fixed_port: int | None = None,
+        manual_callback: bool = False,
+    ):
         """초기화.
 
         Args:
@@ -254,7 +264,7 @@ class BrowserOAuth:
         self.manual_callback = manual_callback
 
         # redirect_uri에 포트 적용
-        if '{port}' in self.config.redirect_uri:
+        if "{port}" in self.config.redirect_uri:
             self.config.redirect_uri = self.config.redirect_uri.format(port=self.port)
 
     def _build_authorization_url(self) -> str:
@@ -264,13 +274,13 @@ class BrowserOAuth:
             str: 인증 URL
         """
         params = {
-            'client_id': self.config.client_id,
-            'redirect_uri': self.config.redirect_uri,
-            'response_type': 'code',
-            'scope': self.config.scope,
-            'state': self.state,
-            'code_challenge': self.pkce.code_challenge,
-            'code_challenge_method': self.pkce.code_challenge_method,
+            "client_id": self.config.client_id,
+            "redirect_uri": self.config.redirect_uri,
+            "response_type": "code",
+            "scope": self.config.scope,
+            "state": self.state,
+            "code_challenge": self.pkce.code_challenge,
+            "code_challenge_method": self.pkce.code_challenge_method,
         }
 
         return f"{self.config.authorization_endpoint}?{urlencode(params)}"
@@ -285,21 +295,21 @@ class BrowserOAuth:
             TokenResponse: 토큰 응답
         """
         data = {
-            'grant_type': 'authorization_code',
-            'client_id': self.config.client_id,
-            'code': code,
-            'redirect_uri': self.config.redirect_uri,
-            'code_verifier': self.pkce.code_verifier,
+            "grant_type": "authorization_code",
+            "client_id": self.config.client_id,
+            "code": code,
+            "redirect_uri": self.config.redirect_uri,
+            "code_verifier": self.pkce.code_verifier,
         }
 
         if self.config.client_secret:
-            data['client_secret'] = self.config.client_secret
+            data["client_secret"] = self.config.client_secret
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 self.config.token_endpoint,
                 data=data,
-                headers={'Content-Type': 'application/x-www-form-urlencoded'}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
 
             if response.status_code != 200:
@@ -308,11 +318,11 @@ class BrowserOAuth:
             result = response.json()
 
             return TokenResponse(
-                access_token=result['access_token'],
-                refresh_token=result.get('refresh_token'),
-                token_type=result.get('token_type', 'Bearer'),
-                expires_in=result.get('expires_in', 3600),
-                scope=result.get('scope')
+                access_token=result["access_token"],
+                refresh_token=result.get("refresh_token"),
+                token_type=result.get("token_type", "Bearer"),
+                expires_in=result.get("expires_in", 3600),
+                scope=result.get("scope"),
             )
 
     def _parse_callback_url(self, callback_url: str) -> tuple[str, str]:
@@ -330,15 +340,15 @@ class BrowserOAuth:
         parsed = urlparse(callback_url)
         params = parse_qs(parsed.query)
 
-        if 'error' in params:
-            error_desc = params.get('error_description', ['인증 거부됨'])[0]
+        if "error" in params:
+            error_desc = params.get("error_description", ["인증 거부됨"])[0]
             raise OAuthCallbackError(f"인증 실패: {error_desc}")
 
-        if 'code' not in params:
+        if "code" not in params:
             raise OAuthCallbackError("URL에서 code 파라미터를 찾을 수 없습니다.")
 
-        code = params['code'][0]
-        state = params.get('state', [None])[0]
+        code = params["code"][0]
+        state = params.get("state", [None])[0]
 
         return code, state
 
@@ -356,15 +366,17 @@ class BrowserOAuth:
 
         # 안내 출력
         console.print()
-        console.print(Panel.fit(
-            "[bold cyan]수동 OAuth 인증 모드[/bold cyan]\n\n"
-            "1. 아래 URL을 브라우저에서 엽니다\n"
-            "2. 로그인을 완료합니다\n"
-            "3. 리디렉션된 URL (에러 페이지 포함)을 복사합니다\n"
-            "4. 복사한 URL을 아래에 붙여넣습니다",
-            title="[AUTH] Manual OAuth Login",
-            border_style="yellow"
-        ))
+        console.print(
+            Panel.fit(
+                "[bold cyan]수동 OAuth 인증 모드[/bold cyan]\n\n"
+                "1. 아래 URL을 브라우저에서 엽니다\n"
+                "2. 로그인을 완료합니다\n"
+                "3. 리디렉션된 URL (에러 페이지 포함)을 복사합니다\n"
+                "4. 복사한 URL을 아래에 붙여넣습니다",
+                title="[AUTH] Manual OAuth Login",
+                border_style="yellow",
+            )
+        )
         console.print()
         console.print("[bold]인증 URL:[/bold]")
         console.print(f"[link={auth_url}]{auth_url}[/link]")
@@ -424,7 +436,7 @@ class BrowserOAuth:
         OAuthCallbackHandler.state = None
 
         # 로컬 서버 시작
-        server = HTTPServer(('localhost', self.port), OAuthCallbackHandler)
+        server = HTTPServer(("localhost", self.port), OAuthCallbackHandler)
         server.timeout = timeout
 
         # 인증 URL 생성
@@ -432,13 +444,15 @@ class BrowserOAuth:
 
         # 안내 출력
         console.print()
-        console.print(Panel.fit(
-            f"[bold cyan]브라우저가 자동으로 열립니다.[/bold cyan]\n\n"
-            f"열리지 않으면 아래 URL을 직접 열어주세요:\n"
-            f"[dim]{auth_url[:80]}...[/dim]",
-            title="[AUTH] Login Required",
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold cyan]브라우저가 자동으로 열립니다.[/bold cyan]\n\n"
+                f"열리지 않으면 아래 URL을 직접 열어주세요:\n"
+                f"[dim]{auth_url[:80]}...[/dim]",
+                title="[AUTH] Login Required",
+                border_style="cyan",
+            )
+        )
         console.print()
 
         # 브라우저 열기

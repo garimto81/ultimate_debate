@@ -107,7 +107,9 @@ class UltimateDebate:
 
             # Check if consensus reached
             if self.is_consensus_reached():
-                print(f"Consensus reached! ({self.consensus_result.consensus_percentage * 100:.1f}%)")
+                print(
+                    f"Consensus reached! ({self.consensus_result.consensus_percentage * 100:.1f}%)"
+                )
                 break
 
             # Phase 3: Cross review
@@ -308,9 +310,13 @@ class UltimateDebate:
             "task_id": self.task_id,
             "current_round": self.round,
             "max_rounds": self.max_rounds,
-            "consensus_status": self.consensus_result.status if self.consensus_result else "PENDING",
+            "consensus_status": (
+                self.consensus_result.status if self.consensus_result else "PENDING"
+            ),
             "consensus_percentage": (
-                self.consensus_result.consensus_percentage if self.consensus_result else 0.0
+                self.consensus_result.consensus_percentage
+                if self.consensus_result
+                else 0.0
             ),
             "registered_models": list(self.ai_clients.keys()),
             "context": context_status,

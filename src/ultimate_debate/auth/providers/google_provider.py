@@ -35,11 +35,7 @@ class GoogleProvider(BaseProvider):
     # 로컬 콜백 포트
     REDIRECT_PORT = 8080
 
-    def __init__(
-        self,
-        client_id: str | None = None,
-        client_secret: str | None = None
-    ):
+    def __init__(self, client_id: str | None = None, client_secret: str | None = None):
         self.client_id = client_id or os.getenv("GOOGLE_CLIENT_ID", "")
         self.client_secret = client_secret or os.getenv("GOOGLE_CLIENT_SECRET")
 
@@ -66,7 +62,7 @@ class GoogleProvider(BaseProvider):
             authorization_endpoint=self.AUTHORIZATION_ENDPOINT,
             token_endpoint=self.TOKEN_ENDPOINT,
             redirect_uri=f"http://localhost:{self.REDIRECT_PORT}/callback",
-            scope=self.SCOPE
+            scope=self.SCOPE,
         )
 
         oauth = BrowserOAuth(config, fixed_port=self.REDIRECT_PORT)
@@ -85,7 +81,7 @@ class GoogleProvider(BaseProvider):
             refresh_token=token_response.refresh_token,
             expires_at=expires_at,
             token_type=token_response.token_type,
-            scopes=token_response.scope.split() if token_response.scope else []
+            scopes=token_response.scope.split() if token_response.scope else [],
         )
 
     async def refresh(self, token: AuthToken) -> AuthToken:
@@ -102,16 +98,15 @@ class GoogleProvider(BaseProvider):
             if self.client_secret:
                 data["client_secret"] = self.client_secret
 
-            response = await client.post(
-                self.TOKEN_ENDPOINT,
-                data=data
-            )
+            response = await client.post(self.TOKEN_ENDPOINT, data=data)
 
             if response.status_code != 200:
                 raise ValueError(f"Token refresh failed: {response.text}")
 
             result = response.json()
-            expires_at = datetime.now() + timedelta(seconds=result.get("expires_in", 3600))
+            expires_at = datetime.now() + timedelta(
+                seconds=result.get("expires_in", 3600)
+            )
 
             return AuthToken(
                 provider=self.name,
@@ -119,7 +114,11 @@ class GoogleProvider(BaseProvider):
                 refresh_token=result.get("refresh_token", token.refresh_token),
                 expires_at=expires_at,
                 token_type=result.get("token_type", "Bearer"),
-                scopes=result.get("scope", "").split() if result.get("scope") else token.scopes
+                scopes=(
+                    result.get("scope", "").split()
+                    if result.get("scope")
+                    else token.scopes
+                ),
             )
 
     async def logout(self, token: AuthToken) -> bool:
@@ -127,7 +126,7 @@ class GoogleProvider(BaseProvider):
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://oauth2.googleapis.com/revoke",
-                data={"token": token.access_token}
+                data={"token": token.access_token},
             )
             return response.status_code == 200
 
@@ -139,7 +138,7 @@ class GoogleProvider(BaseProvider):
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://www.googleapis.com/oauth2/v3/tokeninfo",
-                params={"access_token": token.access_token}
+                params={"access_token": token.access_token},
             )
             return response.status_code == 200
 
@@ -148,7 +147,7 @@ class GoogleProvider(BaseProvider):
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://www.googleapis.com/oauth2/v3/userinfo",
-                headers={"Authorization": f"Bearer {token.access_token}"}
+                headers={"Authorization": f"Bearer {token.access_token}"},
             )
             if response.status_code == 200:
                 return response.json()

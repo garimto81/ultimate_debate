@@ -11,6 +11,7 @@ from datetime import datetime
 @dataclass
 class AuthToken:
     """인증 토큰 데이터 클래스"""
+
     provider: str
     access_token: str
     refresh_token: str | None = None
@@ -41,7 +42,7 @@ class AuthToken:
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "token_type": self.token_type,
             "scopes": self.scopes,
-            "account_info": self.account_info
+            "account_info": self.account_info,
         }
 
     @classmethod
@@ -57,7 +58,7 @@ class AuthToken:
             expires_at=expires_at,
             token_type=data.get("token_type", "Bearer"),
             scopes=data.get("scopes", []),
-            account_info=data.get("account_info")
+            account_info=data.get("account_info"),
         )
 
 

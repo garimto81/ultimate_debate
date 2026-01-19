@@ -49,7 +49,10 @@ class TestDeviceCodeResponse:
             interval=5,
         )
 
-        assert response.verification_uri_complete == "https://auth.openai.com/activate?user_code=ABCD-1234"
+        assert (
+            response.verification_uri_complete
+            == "https://auth.openai.com/activate?user_code=ABCD-1234"
+        )
 
 
 class TestDeviceCodeConfig:
@@ -65,7 +68,10 @@ class TestDeviceCodeConfig:
         )
 
         assert config.client_id == "test_client_id"
-        assert config.device_authorization_endpoint == "https://auth.example.com/device/code"
+        assert (
+            config.device_authorization_endpoint
+            == "https://auth.example.com/device/code"
+        )
         assert config.token_endpoint == "https://auth.example.com/token"
         assert config.scope == "openid profile"
 
@@ -102,8 +108,7 @@ class TestDeviceCodeOAuth:
 
         with patch("httpx.AsyncClient.post") as mock_post:
             mock_post.return_value = MagicMock(
-                status_code=200,
-                json=lambda: mock_response
+                status_code=200, json=lambda: mock_response
             )
 
             result = await oauth.request_device_code()
@@ -117,10 +122,7 @@ class TestDeviceCodeOAuth:
     async def test_request_device_code_failure(self, oauth):
         """device code 요청 실패 테스트."""
         with patch("httpx.AsyncClient.post") as mock_post:
-            mock_post.return_value = MagicMock(
-                status_code=400,
-                text="Bad Request"
-            )
+            mock_post.return_value = MagicMock(status_code=400, text="Bad Request")
 
             with pytest.raises(DeviceCodeError) as exc:
                 await oauth.request_device_code()
@@ -140,12 +142,12 @@ class TestDeviceCodeOAuth:
 
         with patch("httpx.AsyncClient.post") as mock_post:
             mock_post.return_value = MagicMock(
-                status_code=200,
-                json=lambda: mock_token_response
+                status_code=200, json=lambda: mock_token_response
             )
 
             # TokenResponse는 browser_oauth에서 import
             from ultimate_debate.auth.flows.browser_oauth import TokenResponse
+
             result = await oauth.poll_for_token(
                 device_code="dev_code_123",
                 interval=1,
@@ -176,14 +178,8 @@ class TestDeviceCodeOAuth:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                return MagicMock(
-                    status_code=400,
-                    json=lambda: pending_response
-                )
-            return MagicMock(
-                status_code=200,
-                json=lambda: success_response
-            )
+                return MagicMock(status_code=400, json=lambda: pending_response)
+            return MagicMock(status_code=200, json=lambda: success_response)
 
         with patch("httpx.AsyncClient.post", side_effect=mock_post_side_effect):
             result = await oauth.poll_for_token(
@@ -214,14 +210,8 @@ class TestDeviceCodeOAuth:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return MagicMock(
-                    status_code=400,
-                    json=lambda: slow_down_response
-                )
-            return MagicMock(
-                status_code=200,
-                json=lambda: success_response
-            )
+                return MagicMock(status_code=400, json=lambda: slow_down_response)
+            return MagicMock(status_code=200, json=lambda: success_response)
 
         with patch("httpx.AsyncClient.post", side_effect=mock_post_side_effect):
             # slow_down 시 interval이 증가해야 함
@@ -243,8 +233,7 @@ class TestDeviceCodeOAuth:
 
         with patch("httpx.AsyncClient.post") as mock_post:
             mock_post.return_value = MagicMock(
-                status_code=400,
-                json=lambda: expired_response
+                status_code=400, json=lambda: expired_response
             )
 
             with pytest.raises(DeviceCodeError) as exc:
@@ -266,8 +255,7 @@ class TestDeviceCodeOAuth:
 
         with patch("httpx.AsyncClient.post") as mock_post:
             mock_post.return_value = MagicMock(
-                status_code=400,
-                json=lambda: denied_response
+                status_code=400, json=lambda: denied_response
             )
 
             with pytest.raises(DeviceCodeError) as exc:
@@ -288,8 +276,7 @@ class TestDeviceCodeOAuth:
 
         with patch("httpx.AsyncClient.post") as mock_post:
             mock_post.return_value = MagicMock(
-                status_code=400,
-                json=lambda: pending_response
+                status_code=400, json=lambda: pending_response
             )
 
             with pytest.raises(DeviceCodeError) as exc:
@@ -372,22 +359,15 @@ class TestDeviceCodeFullFlow:
             call_count += 1
             if call_count == 1:
                 # device code 요청
-                return MagicMock(
-                    status_code=200,
-                    json=lambda: device_response
-                )
+                return MagicMock(status_code=200, json=lambda: device_response)
             elif call_count == 2:
                 # 첫 번째 폴링 - pending
                 return MagicMock(
-                    status_code=400,
-                    json=lambda: {"error": "authorization_pending"}
+                    status_code=400, json=lambda: {"error": "authorization_pending"}
                 )
             else:
                 # 두 번째 폴링 - 성공
-                return MagicMock(
-                    status_code=200,
-                    json=lambda: token_response
-                )
+                return MagicMock(status_code=200, json=lambda: token_response)
 
         with patch("httpx.AsyncClient.post", side_effect=mock_post_side_effect):
             with patch.object(oauth, "display_instructions"):  # 출력 억제

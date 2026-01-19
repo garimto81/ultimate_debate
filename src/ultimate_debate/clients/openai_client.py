@@ -28,9 +28,7 @@ class OpenAIClient(BaseAIClient):
     API_BASE = "https://api.openai.com/v1"
 
     def __init__(
-        self,
-        model_name: str = "gpt-4o",
-        token_store: Optional[TokenStore] = None
+        self, model_name: str = "gpt-4o", token_store: Optional[TokenStore] = None
     ):
         super().__init__(model_name)
         self.token_store = token_store or TokenStore()
@@ -66,10 +64,7 @@ class OpenAIClient(BaseAIClient):
         return True
 
     async def _call_api(
-        self,
-        messages: list[dict],
-        temperature: float = 0.7,
-        max_tokens: int = 4096
+        self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
     ) -> dict:
         """OpenAI API 호출
 
@@ -89,16 +84,16 @@ class OpenAIClient(BaseAIClient):
                 f"{self.API_BASE}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {self._token.access_token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 json={
                     "model": self.model_name,
                     "messages": messages,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
-                    "response_format": {"type": "json_object"}
+                    "response_format": {"type": "json_object"},
                 },
-                timeout=120.0
+                timeout=120.0,
             )
 
             if response.status_code == 401:
@@ -110,9 +105,7 @@ class OpenAIClient(BaseAIClient):
             return response.json()
 
     async def analyze(
-        self,
-        task: str,
-        context: dict[str, Any] | None = None
+        self, task: str, context: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """태스크 분석
 
@@ -141,18 +134,16 @@ class OpenAIClient(BaseAIClient):
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
+            {"role": "user", "content": user_message},
         ]
 
         response = await self._call_api(messages)
         import json
+
         return json.loads(response["choices"][0]["message"]["content"])
 
     async def review(
-        self,
-        task: str,
-        peer_analysis: dict[str, Any],
-        own_analysis: dict[str, Any]
+        self, task: str, peer_analysis: dict[str, Any], own_analysis: dict[str, Any]
     ) -> dict[str, Any]:
         """피어 분석 리뷰
 
@@ -185,18 +176,19 @@ class OpenAIClient(BaseAIClient):
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
+            {"role": "user", "content": user_message},
         ]
 
         response = await self._call_api(messages)
         import json
+
         return json.loads(response["choices"][0]["message"]["content"])
 
     async def debate(
         self,
         task: str,
         own_position: dict[str, Any],
-        opposing_views: list[dict[str, Any]]
+        opposing_views: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """토론 라운드 참여
 
@@ -223,9 +215,9 @@ class OpenAIClient(BaseAIClient):
     "remaining_disagreements": ["남은 불일치 1", ...]
 }"""
 
-        opposing_views_str = "\n\n".join([
-            f"모델 {i+1}:\n{view}" for i, view in enumerate(opposing_views)
-        ])
+        opposing_views_str = "\n\n".join(
+            [f"모델 {i+1}:\n{view}" for i, view in enumerate(opposing_views)]
+        )
 
         user_message = f"""태스크: {task}
 
@@ -237,9 +229,10 @@ class OpenAIClient(BaseAIClient):
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
+            {"role": "user", "content": user_message},
         ]
 
         response = await self._call_api(messages)
         import json
+
         return json.loads(response["choices"][0]["message"]["content"])

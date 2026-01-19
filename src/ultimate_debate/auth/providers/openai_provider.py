@@ -83,13 +83,13 @@ class OpenAIProvider(BaseProvider):
         self._redirect_uri = f"http://localhost:{self.REDIRECT_PORT}/auth/callback"
 
         params = {
-            'client_id': self.client_id,
-            'redirect_uri': self._redirect_uri,
-            'response_type': 'code',
-            'scope': self.SCOPE,
-            'state': self._state,
-            'code_challenge': self._pkce.code_challenge,
-            'code_challenge_method': self._pkce.code_challenge_method,
+            "client_id": self.client_id,
+            "redirect_uri": self._redirect_uri,
+            "response_type": "code",
+            "scope": self.SCOPE,
+            "state": self._state,
+            "code_challenge": self._pkce.code_challenge,
+            "code_challenge_method": self._pkce.code_challenge_method,
         }
 
         return f"{self.AUTHORIZATION_ENDPOINT}?{urlencode(params)}"
@@ -109,27 +109,27 @@ class OpenAIProvider(BaseProvider):
         parsed = urlparse(callback_url)
         params = parse_qs(parsed.query)
 
-        if 'error' in params:
-            error_desc = params.get('error_description', ['인증 거부됨'])[0]
+        if "error" in params:
+            error_desc = params.get("error_description", ["인증 거부됨"])[0]
             raise ValueError(f"인증 실패: {error_desc}")
 
-        if 'code' not in params:
+        if "code" not in params:
             raise ValueError("URL에서 code 파라미터를 찾을 수 없습니다.")
 
-        code = params['code'][0]
+        code = params["code"][0]
 
         # 토큰 교환
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 self.TOKEN_ENDPOINT,
                 data={
-                    'grant_type': 'authorization_code',
-                    'client_id': self.client_id,
-                    'code': code,
-                    'redirect_uri': self._redirect_uri,
-                    'code_verifier': self._pkce.code_verifier,
+                    "grant_type": "authorization_code",
+                    "client_id": self.client_id,
+                    "code": code,
+                    "redirect_uri": self._redirect_uri,
+                    "code_verifier": self._pkce.code_verifier,
                 },
-                headers={'Content-Type': 'application/x-www-form-urlencoded'}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
 
             if response.status_code != 200:
@@ -137,15 +137,15 @@ class OpenAIProvider(BaseProvider):
 
             result = response.json()
 
-        expires_at = datetime.now() + timedelta(seconds=result.get('expires_in', 3600))
+        expires_at = datetime.now() + timedelta(seconds=result.get("expires_in", 3600))
 
         return AuthToken(
             provider=self.name,
-            access_token=result['access_token'],
-            refresh_token=result.get('refresh_token'),
+            access_token=result["access_token"],
+            refresh_token=result.get("refresh_token"),
             expires_at=expires_at,
-            token_type=result.get('token_type', 'Bearer'),
-            scopes=result.get('scope', '').split() if result.get('scope') else []
+            token_type=result.get("token_type", "Bearer"),
+            scopes=result.get("scope", "").split() if result.get("scope") else [],
         )
 
     async def login_device_code(self, timeout: int = 900) -> AuthToken:
@@ -186,7 +186,7 @@ class OpenAIProvider(BaseProvider):
             refresh_token=token_response.refresh_token,
             expires_at=expires_at,
             token_type=token_response.token_type,
-            scopes=token_response.scope.split() if token_response.scope else []
+            scopes=token_response.scope.split() if token_response.scope else [],
         )
 
     async def login(
@@ -212,6 +212,7 @@ class OpenAIProvider(BaseProvider):
             ValueError: OAuth 인증 실패 시
         """
         from rich.console import Console
+
         console = Console()
 
         # 1순위: Device Code Flow
@@ -231,7 +232,7 @@ class OpenAIProvider(BaseProvider):
             authorization_endpoint=self.AUTHORIZATION_ENDPOINT,
             token_endpoint=self.TOKEN_ENDPOINT,
             redirect_uri="http://localhost:{port}/auth/callback",
-            scope=self.SCOPE
+            scope=self.SCOPE,
         )
 
         oauth = BrowserOAuth(
@@ -252,7 +253,7 @@ class OpenAIProvider(BaseProvider):
             refresh_token=token_response.refresh_token,
             expires_at=expires_at,
             token_type=token_response.token_type,
-            scopes=token_response.scope.split() if token_response.scope else []
+            scopes=token_response.scope.split() if token_response.scope else [],
         )
 
     async def refresh(self, token: AuthToken) -> AuthToken:
@@ -273,9 +274,9 @@ class OpenAIProvider(BaseProvider):
                 data={
                     "grant_type": "refresh_token",
                     "refresh_token": token.refresh_token,
-                    "client_id": self.client_id
+                    "client_id": self.client_id,
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
 
             if response.status_code != 200:
@@ -325,7 +326,7 @@ class OpenAIProvider(BaseProvider):
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://api.openai.com/v1/models",
-                headers={"Authorization": f"Bearer {token.access_token}"}
+                headers={"Authorization": f"Bearer {token.access_token}"},
             )
             return response.status_code == 200
 
@@ -342,7 +343,7 @@ class OpenAIProvider(BaseProvider):
             # UserInfo 엔드포인트
             response = await client.get(
                 "https://auth.openai.com/userinfo",
-                headers={"Authorization": f"Bearer {token.access_token}"}
+                headers={"Authorization": f"Bearer {token.access_token}"},
             )
             if response.status_code == 200:
                 return response.json()

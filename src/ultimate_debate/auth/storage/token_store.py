@@ -13,6 +13,7 @@ from ultimate_debate.auth.providers.base import AuthToken
 # keyring이 없으면 파일 기반 저장소 사용
 try:
     import keyring
+
     HAS_KEYRING = True
 except ImportError:
     HAS_KEYRING = False

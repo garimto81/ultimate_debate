@@ -14,7 +14,7 @@ class TestAuthToken:
         token = AuthToken(
             provider="test",
             access_token="test-token",
-            expires_at=datetime.now() + timedelta(days=30)
+            expires_at=datetime.now() + timedelta(days=30),
         )
         assert token.is_expired() is False
 
@@ -23,17 +23,13 @@ class TestAuthToken:
         token = AuthToken(
             provider="test",
             access_token="test-token",
-            expires_at=datetime.now() - timedelta(days=1)
+            expires_at=datetime.now() - timedelta(days=1),
         )
         assert token.is_expired() is True
 
     def test_is_expired_no_expiry(self):
         """만료 시간 없는 토큰 (무기한)"""
-        token = AuthToken(
-            provider="test",
-            access_token="test-token",
-            expires_at=None
-        )
+        token = AuthToken(provider="test", access_token="test-token", expires_at=None)
         assert token.is_expired() is False
 
     def test_expires_in_days(self):
@@ -41,7 +37,7 @@ class TestAuthToken:
         token = AuthToken(
             provider="test",
             access_token="test-token",
-            expires_at=datetime.now() + timedelta(days=7, hours=12)
+            expires_at=datetime.now() + timedelta(days=7, hours=12),
         )
         # 7일 또는 8일 (시간대에 따라)
         days = token.expires_in_days()
@@ -54,7 +50,7 @@ class TestAuthToken:
             access_token="test-token",
             refresh_token="refresh-token",
             expires_at=datetime(2026, 1, 25, 12, 0, 0),
-            scopes=["chat", "models"]
+            scopes=["chat", "models"],
         )
         data = token.to_dict()
 
@@ -70,7 +66,7 @@ class TestAuthToken:
             "access_token": "google-token",
             "refresh_token": "google-refresh",
             "expires_at": "2026-01-25T12:00:00",
-            "scopes": ["email"]
+            "scopes": ["email"],
         }
         token = AuthToken.from_dict(data)
 
@@ -85,7 +81,7 @@ class TestAuthToken:
             access_token="token123",
             refresh_token="refresh456",
             expires_at=datetime(2026, 2, 1, 10, 30, 0),
-            scopes=["read", "write"]
+            scopes=["read", "write"],
         )
 
         data = original.to_dict()

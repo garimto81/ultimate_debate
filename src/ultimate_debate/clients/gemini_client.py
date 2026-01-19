@@ -29,7 +29,7 @@ class GeminiClient(BaseAIClient):
     def __init__(
         self,
         model_name: str = "gemini-2.0-flash",
-        token_store: Optional[TokenStore] = None
+        token_store: Optional[TokenStore] = None,
     ):
         super().__init__(model_name)
         self.token_store = token_store or TokenStore()
@@ -65,10 +65,7 @@ class GeminiClient(BaseAIClient):
         return True
 
     async def _call_api(
-        self,
-        contents: list[dict],
-        temperature: float = 0.7,
-        max_tokens: int = 4096
+        self, contents: list[dict], temperature: float = 0.7, max_tokens: int = 4096
     ) -> dict:
         """Gemini API 호출
 
@@ -88,17 +85,17 @@ class GeminiClient(BaseAIClient):
                 f"{self.API_BASE}/models/{self.model_name}:generateContent",
                 headers={
                     "Authorization": f"Bearer {self._token.access_token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 json={
                     "contents": contents,
                     "generationConfig": {
                         "temperature": temperature,
                         "maxOutputTokens": max_tokens,
-                        "responseMimeType": "application/json"
-                    }
+                        "responseMimeType": "application/json",
+                    },
                 },
-                timeout=120.0
+                timeout=120.0,
             )
 
             if response.status_code == 401:
@@ -117,9 +114,7 @@ class GeminiClient(BaseAIClient):
             return ""
 
     async def analyze(
-        self,
-        task: str,
-        context: dict[str, Any] | None = None
+        self, task: str, context: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """태스크 분석
 
@@ -147,21 +142,16 @@ class GeminiClient(BaseAIClient):
             user_message += f"\n\n이전 라운드 컨텍스트:\n{context}"
 
         contents = [
-            {
-                "role": "user",
-                "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]
-            }
+            {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}
         ]
 
         response = await self._call_api(contents)
         import json
+
         return json.loads(self._extract_text(response))
 
     async def review(
-        self,
-        task: str,
-        peer_analysis: dict[str, Any],
-        own_analysis: dict[str, Any]
+        self, task: str, peer_analysis: dict[str, Any], own_analysis: dict[str, Any]
     ) -> dict[str, Any]:
         """피어 분석 리뷰
 
@@ -193,21 +183,19 @@ class GeminiClient(BaseAIClient):
 {own_analysis}"""
 
         contents = [
-            {
-                "role": "user",
-                "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]
-            }
+            {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}
         ]
 
         response = await self._call_api(contents)
         import json
+
         return json.loads(self._extract_text(response))
 
     async def debate(
         self,
         task: str,
         own_position: dict[str, Any],
-        opposing_views: list[dict[str, Any]]
+        opposing_views: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """토론 라운드 참여
 
@@ -234,9 +222,9 @@ class GeminiClient(BaseAIClient):
     "remaining_disagreements": ["남은 불일치 1", ...]
 }"""
 
-        opposing_views_str = "\n\n".join([
-            f"모델 {i+1}:\n{view}" for i, view in enumerate(opposing_views)
-        ])
+        opposing_views_str = "\n\n".join(
+            [f"모델 {i+1}:\n{view}" for i, view in enumerate(opposing_views)]
+        )
 
         user_message = f"""태스크: {task}
 
@@ -247,12 +235,10 @@ class GeminiClient(BaseAIClient):
 {opposing_views_str}"""
 
         contents = [
-            {
-                "role": "user",
-                "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]
-            }
+            {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}
         ]
 
         response = await self._call_api(contents)
         import json
+
         return json.loads(self._extract_text(response))

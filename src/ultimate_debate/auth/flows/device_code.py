@@ -26,6 +26,7 @@ console = Console()
 
 class DeviceCodeError(Exception):
     """Device Code Flow 관련 에러."""
+
     pass
 
 
@@ -41,6 +42,7 @@ class DeviceCodeResponse:
         expires_in: device_code 만료 시간 (초)
         interval: 폴링 간격 (초)
     """
+
     device_code: str
     user_code: str
     verification_uri: str
@@ -59,6 +61,7 @@ class DeviceCodeConfig:
         token_endpoint: Token Endpoint
         scope: 요청할 scope
     """
+
     client_id: str
     device_authorization_endpoint: str
     token_endpoint: str
@@ -114,7 +117,7 @@ class DeviceCodeOAuth:
                     "client_id": self.config.client_id,
                     "scope": self.config.scope,
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
 
             if response.status_code != 200:
@@ -171,7 +174,7 @@ class DeviceCodeOAuth:
                         "device_code": device_code,
                         "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                     },
-                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
 
                 if response.status_code == 200:
@@ -233,15 +236,17 @@ class DeviceCodeOAuth:
         expires_min = device_response.expires_in // 60
 
         console.print()
-        console.print(Panel.fit(
-            f"[bold cyan]OpenAI Device Code 인증[/bold cyan]\n\n"
-            f"다음 URL을 브라우저에서 열고 코드를 입력하세요:\n\n"
-            f"[bold]URL:[/bold] [link={verification_url}]{verification_url}[/link]\n"
-            f"[bold]코드:[/bold] [bold yellow]{user_code}[/bold yellow]\n\n"
-            f"[dim]만료: {expires_min}분[/dim]",
-            title="[AUTH] Device Code Login",
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold cyan]OpenAI Device Code 인증[/bold cyan]\n\n"
+                f"다음 URL을 브라우저에서 열고 코드를 입력하세요:\n\n"
+                f"[bold]URL:[/bold] [link={verification_url}]{verification_url}[/link]\n"
+                f"[bold]코드:[/bold] [bold yellow]{user_code}[/bold yellow]\n\n"
+                f"[dim]만료: {expires_min}분[/dim]",
+                title="[AUTH] Device Code Login",
+                border_style="cyan",
+            )
+        )
         console.print()
 
     async def authenticate(
@@ -276,6 +281,7 @@ class DeviceCodeOAuth:
         # 3. 브라우저 자동 열기 (선택)
         if auto_open_browser:
             import webbrowser
+
             url = (
                 device_response.verification_uri_complete
                 or device_response.verification_uri

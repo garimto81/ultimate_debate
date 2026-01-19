@@ -7,10 +7,10 @@ from pathlib import Path
 class LoadLevel(IntEnum):
     """Context loading levels for progressive disclosure."""
 
-    METADATA = 0   # ~100 bytes (task_id, status, timestamp)
-    SUMMARY = 1    # ~300 bytes (brief summary, consensus %)
-    CONCLUSION = 2 # ~800 bytes (final conclusions, agreed items)
-    FULL = 3       # ~4000 bytes (full content with analyses)
+    METADATA = 0  # ~100 bytes (task_id, status, timestamp)
+    SUMMARY = 1  # ~300 bytes (brief summary, consensus %)
+    CONCLUSION = 2  # ~800 bytes (final conclusions, agreed items)
+    FULL = 3  # ~4000 bytes (full content with analyses)
 
 
 class ChunkManager:
@@ -19,7 +19,10 @@ class ChunkManager:
     # Chunk markers for delimiting sections in markdown
     MARKERS = {
         "SUMMARY": ("<!-- CHUNK:SUMMARY:START -->", "<!-- CHUNK:SUMMARY:END -->"),
-        "CONCLUSION": ("<!-- CHUNK:CONCLUSION:START -->", "<!-- CHUNK:CONCLUSION:END -->"),
+        "CONCLUSION": (
+            "<!-- CHUNK:CONCLUSION:START -->",
+            "<!-- CHUNK:CONCLUSION:END -->",
+        ),
         "FULL": ("<!-- CHUNK:FULL:START -->", "<!-- CHUNK:FULL:END -->"),
     }
 
@@ -45,7 +48,10 @@ class ChunkManager:
         if level == LoadLevel.METADATA:
             return self._load_metadata(content)
         elif level == LoadLevel.SUMMARY:
-            return {**self._load_metadata(content), **self._load_chunk(content, "SUMMARY")}
+            return {
+                **self._load_metadata(content),
+                **self._load_chunk(content, "SUMMARY"),
+            }
         elif level == LoadLevel.CONCLUSION:
             return {
                 **self._load_metadata(content),
