@@ -22,7 +22,7 @@ class GoogleProvider(BaseProvider):
     OAuth 2.0 Authorization Code + PKCE 사용.
     Browser OAuth 방식으로 인증.
 
-    Google Cloud SDK의 공개 Client ID를 기본으로 사용하여
+    Gemini CLI의 공개 Client ID를 사용하여
     별도 설정 없이 브라우저 로그인이 가능합니다.
 
     Example:
@@ -33,26 +33,33 @@ class GoogleProvider(BaseProvider):
     # Google OAuth 설정
     AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
     TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
-    # Google Cloud SDK 공개 Client ID (데스크톱 앱용)
-    # 참고: gcloud CLI와 동일한 Client ID
-    DEFAULT_CLIENT_ID = "32555940559.apps.googleusercontent.com"
-    DEFAULT_CLIENT_SECRET = "ZmssLNjJy2998hD4CTg2ejr2"
-    # 기본 스코프 (Gemini API 접근용)
-    # - generative-language.retriever: Gemini generateContent API 접근
-    # - cloud-platform: Google Cloud 리소스 접근 (fallback)
-    # 참고: https://ai.google.dev/gemini-api/docs/oauth
-    SCOPE = (
-        "https://www.googleapis.com/auth/generative-language.retriever "
-        "https://www.googleapis.com/auth/cloud-platform "
-        "openid email"
+    # Gemini CLI 공개 Client ID (Code Assist용)
+    # 참고: https://github.com/RooCodeInc/Roo-Code/issues/5134
+    # Google Cloud SDK Client ID는 generative-language scope 미지원
+    DEFAULT_CLIENT_ID = (
+        "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
     )
-    # 로컬 콜백 포트
+    DEFAULT_CLIENT_SECRET = "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"
+    # 기본 스코프 (Gemini Code Assist용)
+    # cloud-platform만으로 Gemini API 접근 가능 (Code Assist 경로)
+    SCOPE = "https://www.googleapis.com/auth/cloud-platform openid email"
+    # 로컬 콜백 포트 (Gemini CLI와 동일)
     REDIRECT_PORT = 8080
 
-    def __init__(self, client_id: str | None = None, client_secret: str | None = None):
+    def __init__(
+        self, client_id: str | None = None, client_secret: str | None = None
+    ):
         # 환경변수 또는 기본 공개 Client ID 사용
-        self.client_id = client_id or os.getenv("GOOGLE_CLIENT_ID") or self.DEFAULT_CLIENT_ID
-        self.client_secret = client_secret or os.getenv("GOOGLE_CLIENT_SECRET") or self.DEFAULT_CLIENT_SECRET
+        self.client_id = (
+            client_id
+            or os.getenv("GOOGLE_CLIENT_ID")
+            or self.DEFAULT_CLIENT_ID
+        )
+        self.client_secret = (
+            client_secret
+            or os.getenv("GOOGLE_CLIENT_SECRET")
+            or self.DEFAULT_CLIENT_SECRET
+        )
 
     @property
     def name(self) -> str:
@@ -65,7 +72,7 @@ class GoogleProvider(BaseProvider):
     async def login(self, **kwargs) -> AuthToken:
         """Browser OAuth로 로그인
 
-        Google Cloud SDK의 공개 Client ID를 사용하므로
+        Gemini CLI의 공개 Client ID를 사용하므로
         별도 설정 없이 바로 로그인 가능합니다.
         """
 
@@ -83,7 +90,7 @@ class GoogleProvider(BaseProvider):
         try:
             token_response = await oauth.authenticate(timeout=300)
         except OAuthCallbackError as e:
-            raise ValueError(f"Google 인증 실패: {e}")
+            raise ValueError(f"Google 인증 실패: {e}") from e
 
         # 만료 시간 계산
         expires_at = datetime.now() + timedelta(seconds=token_response.expires_in)
