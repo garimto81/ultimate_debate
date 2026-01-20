@@ -82,12 +82,12 @@ class GeminiClient(BaseAIClient):
             "gemini-1.5-pro": "gemini-1.5-pro-002",
         }
 
-        # Code Assist 모델명 매핑
+        # Code Assist 모델명 매핑 (models/ 접두사 없이)
         self._code_assist_model_map = {
-            "gemini-2.0-flash": "models/gemini-2.0-flash",
-            "gemini-2.0-pro": "models/gemini-2.0-pro",
-            "gemini-1.5-flash": "models/gemini-1.5-flash",
-            "gemini-1.5-pro": "models/gemini-1.5-pro",
+            "gemini-2.0-flash": "gemini-2.0-flash",
+            "gemini-2.0-pro": "gemini-2.0-pro",
+            "gemini-1.5-flash": "gemini-1.5-flash",
+            "gemini-1.5-pro": "gemini-1.5-pro",
         }
 
     @property
@@ -140,10 +140,14 @@ class GeminiClient(BaseAIClient):
         headers = {
             "Authorization": f"Bearer {self._token.access_token}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
         }
 
+        # Code Assist 모드: Gemini CLI 호환 User-Agent 사용
+        if self.use_code_assist:
+            headers["User-Agent"] = "ultimate-debate/1.0.0"
         # Google AI 모드에서는 x-goog-user-project 헤더 필요
-        if not self.use_vertex_ai and self.project_id:
+        elif not self.use_vertex_ai and self.project_id:
             headers["x-goog-user-project"] = self.project_id
 
         return headers
@@ -189,23 +193,26 @@ class GeminiClient(BaseAIClient):
         Returns:
             dict: 요청 본문
         """
-        generation_config = {
-            "temperature": temperature,
-            "maxOutputTokens": max_tokens,
-            "responseMimeType": "application/json",
-        }
-
         if self.use_code_assist:
             # Code Assist API는 request 래퍼와 model 필드 필요
+            # responseMimeType은 Code Assist에서 미지원
             return {
                 "model": self.code_assist_model_name,
                 "request": {
                     "contents": contents,
-                    "generationConfig": generation_config,
+                    "generationConfig": {
+                        "temperature": temperature,
+                        "maxOutputTokens": max_tokens,
+                    },
                 },
             }
         else:
             # Vertex AI / Google AI 형식
+            generation_config = {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+                "responseMimeType": "application/json",
+            }
             return {
                 "contents": contents,
                 "generationConfig": generation_config,
