@@ -64,8 +64,12 @@ class DebateContextManager:
         analysis = content.get("analysis", "")
         conclusion = content.get("conclusion", "")
         confidence = content.get("confidence", 0.0)
+        model_version = content.get("model_version", model)
 
         content_md = f"""# Round {round_num} - {model}
+
+## Model Version
+{model_version}
 
 ## Analysis
 {analysis}

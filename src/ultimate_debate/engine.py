@@ -169,7 +169,10 @@ class UltimateDebate:
 
         analyses = {}
         for model_name, result in zip(model_names, results):
-            result["model"] = model_name
+            # API 응답의 정확한 모델 버전 보존 (존재 시)
+            if "model_version" not in result:
+                result["model_version"] = result.get("model", model_name)
+            result["model"] = model_name  # 등록 키 (파일명용)
             analyses[model_name] = result
 
             # Save to context
