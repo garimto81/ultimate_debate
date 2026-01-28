@@ -5,14 +5,17 @@ Browser OAuth 인증 방식 준수 (API 키 사용 금지).
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from ultimate_debate.auth import AuthToken, TokenStore
+from ultimate_debate.auth import AuthToken, RetryLimitExceededError, TokenStore
 from ultimate_debate.clients.base import BaseAIClient
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeClient(BaseAIClient):
@@ -38,17 +41,23 @@ class ClaudeClient(BaseAIClient):
         super().__init__(model_name)
         self.token_store = token_store or TokenStore()
         self._token: str | None = None
+        self._auth_retry_count = 0  # 재인증 재시도 카운터
+        self._max_auth_retries = 1  # 최대 재시도 횟수
 
     async def ensure_authenticated(self) -> bool:
         """인증 상태 확인 및 Claude Code 토큰 획득
 
         Returns:
             bool: 인증 성공 여부
+
+        Raises:
+            ValueError: 토큰을 찾을 수 없을 때 해결 방법 안내
         """
         # 1. 저장된 토큰 확인
         stored_token = await self.token_store.load("anthropic")
         if stored_token and not stored_token.is_expired():
             self._token = stored_token.access_token
+            logger.info("[ClaudeClient] 저장된 토큰 사용")
             return True
 
         # 2. Claude Code 토큰 재사용 시도
@@ -62,9 +71,11 @@ class ClaudeClient(BaseAIClient):
                 token_type="bearer",
             )
             await self.token_store.save(new_token)
+            logger.info("[ClaudeClient] Claude Code 토큰 발견 및 저장")
             return True
 
-        # 3. 토큰 없으면 실패 (사용자에게 로그인 요청 필요)
+        # 3. 토큰 없으면 실패 - 명확한 에러 메시지
+        logger.error("[ClaudeClient] 인증 토큰을 찾을 수 없음")
         return False
 
     def _get_claude_code_token(self) -> str | None:
@@ -72,23 +83,29 @@ class ClaudeClient(BaseAIClient):
 
         Claude Code가 사용하는 토큰을 찾아서 재사용.
         여러 가능한 위치를 순차적으로 확인.
+        실패 시 시도한 경로를 로그에 기록합니다.
 
         Returns:
             str: 토큰 또는 None
         """
-        # Claude Code 설정 디렉토리 위치들
-        possible_paths = [
-            # Windows
-            Path(os.environ.get("APPDATA", "")) / "Claude" / "settings.json",
-            Path(os.environ.get("LOCALAPPDATA", "")) / "Claude" / "settings.json",
-            # macOS/Linux
-            Path.home() / ".config" / "claude" / "settings.json",
-            Path.home() / ".claude" / "settings.json",
+        # 검색할 경로들 (우선순위 순)
+        search_paths = [
             # Claude Code 전용 경로
             Path.home() / ".claude" / "credentials.json",
+            Path.home() / ".claude" / "settings.json",
+            # macOS/Linux 표준 경로
+            Path.home() / ".config" / "claude" / "settings.json",
+            # Windows 경로
+            Path(os.environ.get("APPDATA", "")) / "Claude" / "settings.json",
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Claude" / "settings.json",
         ]
 
-        for path in possible_paths:
+        tried_paths = []
+
+        for path in search_paths:
+            tried_paths.append(str(path))
+            logger.debug(f"[ClaudeClient] 토큰 경로 확인: {path}")
+
             if path.exists():
                 try:
                     with open(path, encoding="utf-8") as f:
@@ -103,10 +120,15 @@ class ClaudeClient(BaseAIClient):
                     )
 
                     if token:
+                        logger.info(f"[ClaudeClient] 토큰 발견: {path}")
                         return token
-                except (OSError, json.JSONDecodeError, KeyError):
+                except (OSError, json.JSONDecodeError, KeyError) as e:
+                    logger.warning(f"[ClaudeClient] 토큰 파싱 실패 ({path}): {e}")
                     continue
 
+        logger.warning(
+            f"[ClaudeClient] 토큰을 찾을 수 없음. 시도한 경로: {tried_paths}"
+        )
         return None
 
     async def _call_api(
@@ -156,12 +178,28 @@ class ClaudeClient(BaseAIClient):
 
             if response.status_code == 401:
                 # 토큰 만료, 재인증 시도
+                if self._auth_retry_count >= self._max_auth_retries:
+                    raise RetryLimitExceededError(
+                        "Authentication failed after retry. "
+                        "Please re-login or check Claude Code credentials",
+                        max_retries=self._max_auth_retries,
+                        attempts=self._auth_retry_count,
+                        provider="claude"
+                    )
+                self._auth_retry_count += 1
                 self._token = None
                 if await self.ensure_authenticated():
-                    return await self._call_api(
+                    result = await self._call_api(
                         messages, system, temperature, max_tokens
                     )
-                raise ValueError("Authentication failed")
+                    self._auth_retry_count = 0  # 성공 시 리셋
+                    return result
+                raise RetryLimitExceededError(
+                    "Authentication failed",
+                    max_retries=self._max_auth_retries,
+                    attempts=self._auth_retry_count,
+                    provider="claude"
+                )
 
             response.raise_for_status()
             result = response.json()

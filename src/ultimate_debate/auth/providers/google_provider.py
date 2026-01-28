@@ -1,10 +1,16 @@
 """Google Provider
 
-Gemini API용 Browser OAuth 2.0 + PKCE 인증.
+Gemini API용 인증.
+- API Key 방식
+- Gemini CLI 토큰 재사용
+- Browser OAuth 2.0 + PKCE
 """
 
+import json
 import os
+import socket
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import httpx
 
@@ -14,6 +20,58 @@ from ultimate_debate.auth.flows.browser_oauth import (
     OAuthConfig,
 )
 from ultimate_debate.auth.providers.base import AuthToken, BaseProvider
+
+
+def try_import_gemini_cli_token() -> AuthToken | None:
+    """Gemini CLI 토큰 재사용 (~/.gemini/oauth_creds.json)
+
+    Gemini CLI가 저장한 OAuth 토큰을 가져와서 재사용합니다.
+
+    Returns:
+        AuthToken: 유효한 토큰이 있으면 반환, 없으면 None
+    """
+    gemini_creds_path = Path.home() / ".gemini" / "oauth_creds.json"
+
+    if not gemini_creds_path.exists():
+        return None
+
+    try:
+        with open(gemini_creds_path) as f:
+            creds = json.load(f)
+
+        access_token = creds.get("access_token")
+        refresh_token = creds.get("refresh_token")
+        expires_at_str = creds.get("expires_at")
+
+        if not access_token:
+            return None
+
+        # expires_at 파싱 (ISO 형식 또는 Unix timestamp)
+        expires_at = None
+        if expires_at_str:
+            if isinstance(expires_at_str, (int, float)):
+                expires_at = datetime.fromtimestamp(expires_at_str)
+            else:
+                # ISO 형식
+                expires_at = datetime.fromisoformat(
+                    expires_at_str.replace("Z", "+00:00")
+                )
+                expires_at = expires_at.replace(tzinfo=None)
+
+        # 만료 확인
+        if expires_at and expires_at <= datetime.now():
+            return None
+
+        return AuthToken(
+            provider="google",
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=expires_at,
+            token_type="Bearer",
+            scopes=creds.get("scopes", []),
+        )
+    except Exception:
+        return None
 
 
 class GoogleProvider(BaseProvider):
@@ -43,8 +101,12 @@ class GoogleProvider(BaseProvider):
     # 기본 스코프 (Gemini Code Assist용)
     # cloud-platform만으로 Gemini API 접근 가능 (Code Assist 경로)
     SCOPE = "https://www.googleapis.com/auth/cloud-platform openid email"
-    # 로컬 콜백 포트 (Gemini CLI와 동일)
-    REDIRECT_PORT = 8080
+    # 로컬 콜백 포트 설정
+    DEFAULT_REDIRECT_PORT = 8080
+    MAX_PORT_ATTEMPTS = 10
+
+    # Gemini API 검증 엔드포인트
+    GEMINI_MODELS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
 
     def __init__(
         self, client_id: str | None = None, client_secret: str | None = None
@@ -61,6 +123,36 @@ class GoogleProvider(BaseProvider):
             or self.DEFAULT_CLIENT_SECRET
         )
 
+    def _is_port_available(self, port: int) -> bool:
+        """포트 사용 가능 여부 확인"""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("localhost", port))
+                return True
+        except OSError:
+            return False
+
+    def _find_available_port(
+        self, start_port: int = 8080, max_attempts: int = 10
+    ) -> int:
+        """사용 가능한 포트 찾기
+
+        Args:
+            start_port: 시작 포트 번호
+            max_attempts: 최대 시도 횟수
+
+        Returns:
+            int: 사용 가능한 포트
+
+        Raises:
+            RuntimeError: 사용 가능한 포트를 찾지 못한 경우
+        """
+        for port in range(start_port, start_port + max_attempts):
+            if self._is_port_available(port):
+                return port
+        end_port = start_port + max_attempts - 1
+        raise RuntimeError(f"사용 가능한 포트를 찾을 수 없음 ({start_port}-{end_port})")
+
     @property
     def name(self) -> str:
         return "google"
@@ -72,20 +164,36 @@ class GoogleProvider(BaseProvider):
     async def login(self, **kwargs) -> AuthToken:
         """Browser OAuth로 로그인
 
+        Gemini CLI 토큰이 있으면 우선 재사용합니다.
+        없거나 만료된 경우에만 브라우저 로그인을 진행합니다.
+
         Gemini CLI의 공개 Client ID를 사용하므로
         별도 설정 없이 바로 로그인 가능합니다.
+
+        동적 포트 할당을 사용하여 포트 충돌을 방지합니다.
         """
+        # 1. Gemini CLI 토큰 확인 (우선)
+        cli_token = try_import_gemini_cli_token()
+        if cli_token and not cli_token.is_expired():
+            print("[GoogleProvider] Gemini CLI 토큰 재사용")
+            return cli_token
+
+        # 2. CLI 토큰 없거나 만료 시 브라우저 로그인
+        # 동적 포트 할당
+        port = self._find_available_port(
+            self.DEFAULT_REDIRECT_PORT, self.MAX_PORT_ATTEMPTS
+        )
 
         config = OAuthConfig(
             client_id=self.client_id,
             client_secret=self.client_secret,
             authorization_endpoint=self.AUTHORIZATION_ENDPOINT,
             token_endpoint=self.TOKEN_ENDPOINT,
-            redirect_uri=f"http://localhost:{self.REDIRECT_PORT}/callback",
+            redirect_uri=f"http://localhost:{port}/callback",
             scope=self.SCOPE,
         )
 
-        oauth = BrowserOAuth(config, fixed_port=self.REDIRECT_PORT)
+        oauth = BrowserOAuth(config, fixed_port=port)
 
         try:
             token_response = await oauth.authenticate(timeout=300)
@@ -102,6 +210,43 @@ class GoogleProvider(BaseProvider):
             expires_at=expires_at,
             token_type=token_response.token_type,
             scopes=token_response.scope.split() if token_response.scope else [],
+        )
+
+    async def login_with_api_key(self, api_key: str) -> AuthToken:
+        """API Key로 인증
+
+        Google AI Studio에서 발급받은 API Key를 사용합니다.
+        https://aistudio.google.com/app/apikey
+
+        Args:
+            api_key: Google AI Studio API Key
+
+        Returns:
+            AuthToken: API Key 토큰 (만료 없음)
+
+        Raises:
+            ValueError: API Key가 유효하지 않은 경우
+        """
+        # API Key 유효성 검증
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                self.GEMINI_MODELS_ENDPOINT,
+                params={"key": api_key},
+            )
+
+            if response.status_code != 200:
+                error_data = response.json().get("error", {})
+                error_msg = error_data.get("message", "Unknown error")
+                raise ValueError(f"API Key 검증 실패: {error_msg}")
+
+        # API Key를 access_token으로 저장 (만료 없음)
+        return AuthToken(
+            provider=self.name,
+            access_token=api_key,
+            refresh_token=None,
+            expires_at=None,  # API Key는 만료 없음
+            token_type="api_key",  # OAuth와 구분
+            scopes=["generative-language"],
         )
 
     async def refresh(self, token: AuthToken) -> AuthToken:

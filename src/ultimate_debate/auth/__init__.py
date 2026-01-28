@@ -12,6 +12,13 @@ Example:
     await store.save(token)
 """
 
+from ultimate_debate.auth.exceptions import (
+    AuthenticationError,
+    OAuthError,
+    RetryLimitExceededError,
+    TokenExpiredError,
+    TokenNotFoundError,
+)
 from ultimate_debate.auth.providers.base import AuthToken, BaseProvider
 from ultimate_debate.auth.storage.token_store import TokenStore
 
@@ -20,4 +27,10 @@ __all__ = [
     "AuthToken",
     "BaseProvider",
     "TokenStore",
+    # Exceptions
+    "AuthenticationError",
+    "TokenExpiredError",
+    "TokenNotFoundError",
+    "RetryLimitExceededError",
+    "OAuthError",
 ]

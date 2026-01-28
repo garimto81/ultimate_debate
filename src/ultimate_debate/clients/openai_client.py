@@ -2,15 +2,18 @@
 
 ChatGPT Plus/Pro 구독자용 AI 클라이언트.
 Browser OAuth 인증과 연동.
+
+Codex CLI 호환 - chatgpt.com/backend-api/codex/responses 엔드포인트 사용.
 """
 
-from typing import Any, Optional
+import uuid
+from typing import Any
 
 import httpx
 
-from ultimate_debate.clients.base import BaseAIClient
-from ultimate_debate.auth import TokenStore, AuthToken
+from ultimate_debate.auth import AuthToken, RetryLimitExceededError, TokenStore
 from ultimate_debate.auth.providers import OpenAIProvider
+from ultimate_debate.clients.base import BaseAIClient
 
 
 class OpenAIClient(BaseAIClient):
@@ -19,21 +22,34 @@ class OpenAIClient(BaseAIClient):
     ChatGPT Plus/Pro 구독자 전용.
     Browser OAuth로 인증하여 GPT-4/GPT-5 모델 접근.
 
+    Codex CLI 호환 엔드포인트 사용:
+    - chatgpt.com/backend-api/codex/responses (구독 기반)
+    - api.openai.com/v1 (API 키 기반, fallback)
+
     Example:
-        client = OpenAIClient(model_name="gpt-4o")
+        client = OpenAIClient(model_name="gpt-5-codex")
         await client.ensure_authenticated()
         result = await client.analyze("코드 리뷰 요청", context)
     """
 
+    # Codex CLI 호환 엔드포인트 (ChatGPT Plus/Pro 구독 기반)
+    CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
+    # 기존 OpenAI API (API 키 기반, fallback)
     API_BASE = "https://api.openai.com/v1"
 
+    # 기본 시스템 지시사항 (Codex API 필수)
+    DEFAULT_INSTRUCTIONS = """You are a helpful AI assistant specialized in code analysis, review, and technical discussions.
+Respond in JSON format when requested. Be precise and thorough in your analysis."""
+
     def __init__(
-        self, model_name: str = "gpt-4o", token_store: Optional[TokenStore] = None
+        self, model_name: str = "gpt-4o", token_store: TokenStore | None = None
     ):
         super().__init__(model_name)
         self.token_store = token_store or TokenStore()
         self.provider = OpenAIProvider()
-        self._token: Optional[AuthToken] = None
+        self._token: AuthToken | None = None
+        self._auth_retry_count = 0  # 재인증 재시도 카운터
+        self._max_auth_retries = 1  # 최대 재시도 횟수
 
     async def ensure_authenticated(self) -> bool:
         """인증 상태 확인 및 필요시 로그인
@@ -66,7 +82,7 @@ class OpenAIClient(BaseAIClient):
     async def _call_api(
         self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
     ) -> dict:
-        """OpenAI API 호출
+        """OpenAI API 호출 (Codex API 우선)
 
         Args:
             messages: 메시지 배열
@@ -74,35 +90,150 @@ class OpenAIClient(BaseAIClient):
             max_tokens: 최대 토큰 수
 
         Returns:
-            dict: API 응답
+            dict: API 응답 (Chat Completions 형식으로 정규화)
         """
         if not self._token:
             await self.ensure_authenticated()
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.API_BASE}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._token.access_token}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model_name,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "response_format": {"type": "json_object"},
-                },
-                timeout=120.0,
-            )
+        # Codex API 형식으로 요청 (ChatGPT Plus/Pro 구독 기반)
+        return await self._call_codex_api(messages, temperature, max_tokens)
 
+    async def _call_codex_api(
+        self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
+    ) -> dict:
+        """Codex CLI 호환 API 호출 (스트리밍 필수)
+
+        chatgpt.com/backend-api/codex/responses 엔드포인트 사용.
+        OpenAI Codex API는 stream=true가 필수입니다.
+
+        Args:
+            messages: 메시지 배열 (role: system/user/assistant)
+            temperature: 창의성 조절
+            max_tokens: 최대 토큰 수
+
+        Returns:
+            dict: Chat Completions 형식으로 정규화된 응답
+        """
+        import json
+
+        # 메시지를 Codex input 형식으로 변환
+        # system → developer, user → user, assistant → assistant
+        codex_input = []
+        system_content = self.DEFAULT_INSTRUCTIONS
+
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+
+            if role == "system":
+                system_content = content
+            elif role == "user":
+                codex_input.append({"role": "user", "content": content})
+            elif role == "assistant":
+                codex_input.append({"role": "assistant", "content": content})
+
+        # developer 역할로 시스템 프롬프트 추가 (맨 앞에)
+        if system_content:
+            codex_input.insert(0, {"role": "developer", "content": system_content})
+
+        payload = {
+            "model": self.model_name,
+            "instructions": self.DEFAULT_INSTRUCTIONS,
+            "input": codex_input,
+            "tools": [],
+            "tool_choice": "auto",
+            "parallel_tool_calls": False,
+            "reasoning": {"summary": "auto"},
+            "store": False,
+            "stream": True,  # Codex API는 스트리밍 필수!
+            "include": ["reasoning.encrypted_content"],
+            "prompt_cache_key": str(uuid.uuid4()),
+        }
+
+        async with httpx.AsyncClient() as client, client.stream(
+            "POST",
+            f"{self.CODEX_API_BASE}/responses",
+            headers={
+                "Authorization": f"Bearer {self._token.access_token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=120.0,
+        ) as response:
             if response.status_code == 401:
                 # 토큰 만료, 재인증 시도
+                if self._auth_retry_count >= self._max_auth_retries:
+                    raise RetryLimitExceededError(
+                        "Authentication failed after retry. "
+                        "Please re-login with /ai-login openai",
+                        max_retries=self._max_auth_retries,
+                        attempts=self._auth_retry_count,
+                        provider="openai"
+                    )
+                self._auth_retry_count += 1
                 await self.ensure_authenticated()
-                return await self._call_api(messages, temperature, max_tokens)
+                result = await self._call_codex_api(
+                    messages, temperature, max_tokens
+                )
+                self._auth_retry_count = 0  # 성공 시 리셋
+                return result
 
-            response.raise_for_status()
-            return response.json()
+            if response.status_code != 200:
+                # Codex API 실패 시 에러 내용 포함
+                body = await response.aread()
+                error_detail = body.decode()[:500] if body else "Unknown error"
+                raise httpx.HTTPStatusError(
+                    f"Codex API error: {error_detail}",
+                    request=response.request,
+                    response=response,
+                )
+
+            # 스트리밍 응답 수집
+            text_content = ""
+            reasoning_summary = ""
+            model_name = self.model_name
+            usage = {}
+
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    try:
+                        data = json.loads(data_str)
+                        event_type = data.get("type", "")
+
+                        # 텍스트 응답 수집
+                        if event_type == "response.output_text.delta":
+                            text_content += data.get("delta", "")
+
+                        # reasoning summary 수집
+                        if event_type == "response.reasoning_summary_text.delta":
+                            reasoning_summary += data.get("delta", "")
+
+                        # 완료 이벤트에서 모델명, 사용량 추출
+                        if event_type == "response.completed":
+                            resp_data = data.get("response", {})
+                            model_name = resp_data.get("model", self.model_name)
+                            usage = resp_data.get("usage", {})
+
+                    except json.JSONDecodeError:
+                        pass
+
+            # Chat Completions 형식으로 정규화
+            return {
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": text_content,
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": usage,
+                "model": model_name,
+                "reasoning_summary": reasoning_summary,
+            }
 
     async def analyze(
         self, task: str, context: dict[str, Any] | None = None

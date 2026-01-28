@@ -21,6 +21,10 @@ from rich.panel import Panel
 
 console = Console()
 
+# 세션별 콜백 결과 저장소 (state를 키로 사용)
+_callback_results: dict[str, dict] = {}
+_callback_lock = threading.Lock()
+
 
 @dataclass
 class PKCEChallenge:
@@ -94,11 +98,6 @@ def find_free_port() -> int:
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
     """OAuth Callback 핸들러."""
 
-    # 클래스 변수로 결과 저장
-    auth_code: str | None = None
-    error: str | None = None
-    state: str | None = None
-
     def log_message(self, format, *args):
         """로그 출력 비활성화."""
         pass
@@ -115,9 +114,18 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
 
         params = parse_qs(parsed.query)
 
+        # state 추출 (세션 식별)
+        state = params.get("state", [None])[0]
+
         # 에러 체크
         if "error" in params:
-            OAuthCallbackHandler.error = params["error"][0]
+            error = params["error"][0]
+            if state:
+                with _callback_lock:
+                    _callback_results[state] = {
+                        "auth_code": None,
+                        "error": error
+                    }
             self._send_error_response(
                 params.get("error_description", ["인증 거부됨"])[0]
             )
@@ -125,8 +133,13 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
 
         # 코드 추출
         if "code" in params:
-            OAuthCallbackHandler.auth_code = params["code"][0]
-            OAuthCallbackHandler.state = params.get("state", [None])[0]
+            auth_code = params["code"][0]
+            if state:
+                with _callback_lock:
+                    _callback_results[state] = {
+                        "auth_code": auth_code,
+                        "error": None
+                    }
             self._send_success_response()
         else:
             # code가 없는 요청은 무시 (브라우저 자동 요청 등)
@@ -147,7 +160,8 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
             <title>인증 성공</title>
             <style>
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                                 Roboto, sans-serif;
                     display: flex;
                     justify-content: center;
                     align-items: center;
@@ -192,7 +206,8 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
             <title>인증 실패</title>
             <style>
                 body {{
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                                 Roboto, sans-serif;
                     display: flex;
                     justify-content: center;
                     align-items: center;
@@ -393,8 +408,8 @@ class BrowserOAuth:
 
         try:
             callback_url = input("> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            raise OAuthCallbackError("사용자가 취소했습니다.")
+        except (EOFError, KeyboardInterrupt) as e:
+            raise OAuthCallbackError("사용자가 취소했습니다.") from e
 
         if not callback_url:
             raise OAuthCallbackError("URL이 입력되지 않았습니다.")
@@ -430,10 +445,8 @@ class BrowserOAuth:
         if self.manual_callback:
             return await self.authenticate_manual()
 
-        # 핸들러 초기화
-        OAuthCallbackHandler.auth_code = None
-        OAuthCallbackHandler.error = None
-        OAuthCallbackHandler.state = None
+        # 이 세션의 state로 결과를 추적
+        session_state = self.state
 
         # 로컬 서버 시작
         server = HTTPServer(("localhost", self.port), OAuthCallbackHandler)
@@ -466,9 +479,10 @@ class BrowserOAuth:
             start_time = time.time()
             while time.time() - start_time < timeout:
                 server.handle_request()
-                # 인증 코드가 수신되면 종료
-                if OAuthCallbackHandler.auth_code or OAuthCallbackHandler.error:
-                    break
+                # 이 세션의 콜백이 수신되면 종료
+                with _callback_lock:
+                    if session_state in _callback_results:
+                        break
 
         thread = threading.Thread(target=serve)
         thread.start()
@@ -477,21 +491,26 @@ class BrowserOAuth:
         server.server_close()
 
         # 결과 확인
-        if OAuthCallbackHandler.error:
-            raise OAuthCallbackError(f"인증 실패: {OAuthCallbackHandler.error}")
+        with _callback_lock:
+            result = _callback_results.get(session_state)
+            # 결과를 가져온 후 삭제 (메모리 정리)
+            if session_state in _callback_results:
+                del _callback_results[session_state]
 
-        if not OAuthCallbackHandler.auth_code:
+        if result is None:
             raise OAuthCallbackError("인증 시간이 초과되었습니다.")
 
-        # state 검증
-        if OAuthCallbackHandler.state != self.state:
-            raise OAuthCallbackError("State 불일치 - CSRF 공격 가능성")
+        if result["error"]:
+            raise OAuthCallbackError(f"인증 실패: {result['error']}")
+
+        if not result["auth_code"]:
+            raise OAuthCallbackError("인증 코드를 받지 못했습니다.")
 
         console.print("[bold green][OK] 인증 코드 수신 완료![/bold green]")
         console.print("[dim]토큰 교환 중...[/dim]")
 
         # 토큰 교환
-        token = await self._exchange_code_for_token(OAuthCallbackHandler.auth_code)
+        token = await self._exchange_code_for_token(result["auth_code"])
 
         console.print("[bold green][OK] 인증 성공![/bold green]")
 

@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from ultimate_debate.auth import AuthToken, TokenStore
+from ultimate_debate.auth import AuthToken, RetryLimitExceededError, TokenStore
 from ultimate_debate.auth.providers import GoogleProvider
 from ultimate_debate.clients.base import BaseAIClient
 
@@ -67,6 +67,8 @@ class GeminiClient(BaseAIClient):
         self.provider = GoogleProvider()
         self._token: AuthToken | None = None
         self._discovered_project_id: str | None = None
+        self._auth_retry_count = 0  # 재인증 재시도 카운터
+        self._max_auth_retries = 1  # 최대 재시도 횟수
 
         # 프로젝트 설정
         self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -252,8 +254,19 @@ class GeminiClient(BaseAIClient):
 
             if response.status_code == 401:
                 # 토큰 만료, 재인증 시도
+                if self._auth_retry_count >= self._max_auth_retries:
+                    raise RetryLimitExceededError(
+                        "Authentication failed after retry. "
+                        "Please re-login with /ai-login google",
+                        max_retries=self._max_auth_retries,
+                        attempts=self._auth_retry_count,
+                        provider="google"
+                    )
+                self._auth_retry_count += 1
                 await self.ensure_authenticated()
-                return await self._call_api(contents, temperature, max_tokens)
+                result = await self._call_api(contents, temperature, max_tokens)
+                self._auth_retry_count = 0  # 성공 시 리셋
+                return result
 
             if response.status_code == 403:
                 # 권한 오류 - 상세 메시지 제공
