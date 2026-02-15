@@ -1,4 +1,12 @@
-"""Ultimate debate engine with 5-phase workflow."""
+"""Ultimate debate engine with 5-phase workflow.
+
+Claude Code가 오케스트레이터로서 직접 분석에 참여하고,
+외부 AI(GPT, Gemini)와 협업하는 Multi-AI Consensus Engine.
+
+Note:
+    ClaudeClient는 더 이상 사용하지 않음.
+    Claude Code 자체가 Claude이므로, API 호출 대신 직접 분석 수행.
+"""
 
 import asyncio
 import uuid
@@ -11,7 +19,25 @@ from ultimate_debate.storage.context_manager import DebateContextManager
 
 
 class UltimateDebate:
-    """Orchestrate multi-AI debate with consensus checking."""
+    """Orchestrate multi-AI debate with consensus checking.
+
+    Claude Code가 오케스트레이터이자 참여자로서 동작:
+    - 외부 AI (GPT, Gemini): register_ai_client()로 등록
+    - Claude: include_claude_self=True면 자체 분석 참여 (API 호출 없음)
+
+    Example:
+        # 올바른 사용 예시 (3AI 토론)
+        debate = UltimateDebate(
+            task="API 설계 리뷰",
+            include_claude_self=True  # Claude Code 자체 참여
+        )
+
+        # 외부 AI만 등록 (Claude는 자동 참여)
+        debate.register_ai_client("gpt", OpenAIClient("gpt-4o"))
+        debate.register_ai_client("gemini", GeminiClient("gemini-2.0-flash-exp"))
+
+        result = await debate.run()
+    """
 
     def __init__(
         self,
@@ -19,6 +45,7 @@ class UltimateDebate:
         task_id: str | None = None,
         max_rounds: int = 5,
         consensus_threshold: float = 0.8,
+        include_claude_self: bool = True,
     ):
         """Initialize debate orchestrator.
 
@@ -27,23 +54,31 @@ class UltimateDebate:
             task_id: Optional task ID (generated if not provided)
             max_rounds: Maximum debate rounds before forced conclusion
             consensus_threshold: Minimum agreement ratio for full consensus
+            include_claude_self: Claude Code 자체가 분석에 참여할지 여부.
+                True(기본값)면 Claude Code가 직접 분석 결과를 제공.
+                API 호출 없이 오케스트레이터 자체가 Claude 역할 수행.
         """
         self.task = task
         self.task_id = task_id or self._generate_task_id()
         self.round = 0
         self.max_rounds = max_rounds
         self.consensus_threshold = consensus_threshold
+        self.include_claude_self = include_claude_self
 
         # Initialize components
         self.context_manager = DebateContextManager(self.task_id)
         self.consensus_checker = ConsensusChecker(threshold=consensus_threshold)
 
-        # AI clients (placeholder - to be injected)
+        # AI clients (외부 AI만: GPT, Gemini 등)
+        # Claude는 등록하지 않음 - include_claude_self로 자체 참여
         self.ai_clients: dict[str, BaseAIClient] = {}
 
         # Debate state
         self.current_analyses: dict[str, dict[str, Any]] = {}
         self.consensus_result: ConsensusResult | None = None
+
+        # Claude 자체 분석 결과 저장 (외부에서 주입)
+        self._claude_self_analysis: dict[str, Any] | None = None
 
     def _generate_task_id(self) -> str:
         """Generate unique task ID.
@@ -56,13 +91,45 @@ class UltimateDebate:
         return f"debate_{timestamp}_{short_uuid}"
 
     def register_ai_client(self, model_name: str, client: BaseAIClient) -> None:
-        """Register an AI client for debate.
+        """Register an external AI client for debate.
+
+        Note:
+            Claude는 등록하지 마세요! Claude Code가 이미 Claude입니다.
+            include_claude_self=True로 자동 참여합니다.
 
         Args:
-            model_name: Model identifier (claude/gpt/gemini)
+            model_name: Model identifier (gpt/gemini 등 외부 AI)
             client: AI client instance
+
+        Raises:
+            ValueError: 'claude'를 등록하려 할 때
         """
+        if model_name.lower() == "claude":
+            raise ValueError(
+                "Claude 클라이언트를 등록하지 마세요! "
+                "Claude Code가 이미 Claude입니다. "
+                "include_claude_self=True(기본값)로 자동 참여합니다."
+            )
         self.ai_clients[model_name] = client
+
+    def set_claude_analysis(self, analysis: dict[str, Any]) -> None:
+        """Claude Code의 자체 분석 결과 설정.
+
+        Claude Code(오케스트레이터)가 직접 분석한 결과를 주입합니다.
+        API 호출 없이 Claude의 관점을 토론에 반영.
+
+        Args:
+            analysis: Claude의 분석 결과
+                - analysis: 상세 분석 내용
+                - conclusion: 핵심 결론
+                - confidence: 확신도 (0.0~1.0)
+                - key_points: 핵심 포인트 리스트
+        """
+        self._claude_self_analysis = {
+            "model": "claude",
+            "model_version": "claude-code-self",  # Claude Code 자체
+            **analysis,
+        }
 
     async def run(self) -> dict[str, Any]:
         """Run complete debate workflow.
@@ -107,9 +174,8 @@ class UltimateDebate:
 
             # Check if consensus reached
             if self.is_consensus_reached():
-                print(
-                    f"Consensus reached! ({self.consensus_result.consensus_percentage * 100:.1f}%)"
-                )
+                pct = self.consensus_result.consensus_percentage * 100
+                print(f"Consensus reached! ({pct:.1f}%)")
                 break
 
             # Phase 3: Cross review
@@ -151,43 +217,79 @@ class UltimateDebate:
     async def run_parallel_analysis(self) -> dict[str, dict[str, Any]]:
         """Phase 1: Run parallel analysis from all AI models.
 
+        외부 AI(GPT, Gemini)는 API 호출, Claude는 자체 분석 결과 사용.
+
         Returns:
             Dict mapping model name to analysis result
         """
-        if not self.ai_clients:
-            # Placeholder: mock responses when no real clients
-            return self._mock_parallel_analysis()
-
-        tasks = []
-        model_names = []
-
-        for model_name, client in self.ai_clients.items():
-            tasks.append(client.analyze(self.task))
-            model_names.append(model_name)
-
-        results = await asyncio.gather(*tasks)
-
         analyses = {}
-        for model_name, result in zip(model_names, results):
-            # API 응답의 정확한 모델 버전 보존 (존재 시)
-            if "model_version" not in result:
-                result["model_version"] = result.get("model", model_name)
-            result["model"] = model_name  # 등록 키 (파일명용)
-            analyses[model_name] = result
 
-            # Save to context
-            self.context_manager.save_round(self.round, model_name, result)
+        # 1. 외부 AI 병렬 호출 (GPT, Gemini 등)
+        if self.ai_clients:
+            tasks = []
+            model_names = []
+
+            for model_name, client in self.ai_clients.items():
+                tasks.append(client.analyze(self.task))
+                model_names.append(model_name)
+
+            results = await asyncio.gather(*tasks)
+
+            for model_name, result in zip(model_names, results, strict=True):
+                # API 응답의 정확한 모델 버전 보존 (존재 시)
+                if "model_version" not in result:
+                    result["model_version"] = result.get("model", model_name)
+                result["model"] = model_name  # 등록 키 (파일명용)
+                analyses[model_name] = result
+
+                # Save to context
+                self.context_manager.save_round(self.round, model_name, result)
+
+        # 2. Claude Code 자체 분석 추가 (API 호출 없음)
+        if self.include_claude_self:
+            claude_analysis = self._get_claude_self_analysis()
+            analyses["claude"] = claude_analysis
+            self.context_manager.save_round(self.round, "claude", claude_analysis)
+
+        # 3. 클라이언트도 없고 Claude 자체 참여도 없으면 mock
+        if not analyses:
+            return self._mock_parallel_analysis()
 
         self.current_analyses = analyses
         return analyses
 
+    def _get_claude_self_analysis(self) -> dict[str, Any]:
+        """Claude Code의 자체 분석 결과 반환.
+
+        set_claude_analysis()로 설정된 결과가 있으면 사용,
+        없으면 플레이스홀더 반환 (실제 사용 시 반드시 설정 필요).
+
+        Returns:
+            Claude의 분석 결과 dict
+        """
+        if self._claude_self_analysis:
+            return self._claude_self_analysis
+
+        # 플레이스홀더 - 실제 사용 시 set_claude_analysis()로 설정해야 함
+        return {
+            "model": "claude",
+            "model_version": "claude-code-self",
+            "analysis": "[Claude Code 분석 대기 중 - set_claude_analysis() 호출 필요]",
+            "conclusion": "[분석 결과를 set_claude_analysis()로 설정하세요]",
+            "confidence": 0.0,
+            "key_points": [],
+            "requires_input": True,  # 입력 필요 플래그
+        }
+
     async def run_cross_review(self) -> dict[str, dict[str, Any]]:
         """Phase 2: Run cross-review between models.
+
+        외부 AI끼리의 리뷰는 API 호출, Claude 관련 리뷰는 별도 처리.
 
         Returns:
             Dict mapping reviewer-reviewed pair to review result
         """
-        if not self.ai_clients:
+        if not self.ai_clients and not self.include_claude_self:
             # Placeholder: mock reviews
             return self._mock_cross_review()
 
@@ -195,6 +297,7 @@ class UltimateDebate:
         tasks = []
         review_keys = []
 
+        # 1. 외부 AI가 다른 모델을 리뷰 (Claude 포함)
         for reviewer_name, reviewer_client in self.ai_clients.items():
             for reviewed_name, reviewed_analysis in self.current_analyses.items():
                 if reviewer_name == reviewed_name:
@@ -207,18 +310,65 @@ class UltimateDebate:
                 )
                 review_keys.append((reviewer_name, reviewed_name))
 
-        results = await asyncio.gather(*tasks)
+        if tasks:
+            results = await asyncio.gather(*tasks)
 
-        for (reviewer_name, reviewed_name), result in zip(review_keys, results):
-            key = f"{reviewer_name}_reviews_{reviewed_name}"
-            reviews[key] = result
+            for (reviewer_name, reviewed_name), result in zip(
+                review_keys, results, strict=True
+            ):
+                key = f"{reviewer_name}_reviews_{reviewed_name}"
+                reviews[key] = result
 
-            # Save to context
-            self.context_manager.save_cross_review(
-                self.round, reviewer_name, reviewed_name, result
-            )
+                # Save to context
+                self.context_manager.save_cross_review(
+                    self.round, reviewer_name, reviewed_name, result
+                )
+
+        # 2. Claude가 다른 모델을 리뷰 (외부 주입 또는 플레이스홀더)
+        if self.include_claude_self and "claude" in self.current_analyses:
+            for reviewed_name, reviewed_analysis in self.current_analyses.items():
+                if reviewed_name == "claude":
+                    continue
+
+                key = f"claude_reviews_{reviewed_name}"
+                # Claude의 리뷰는 외부에서 set_claude_review()로 설정하거나 플레이스홀더
+                review = self._get_claude_review_for(reviewed_name, reviewed_analysis)
+                reviews[key] = review
+
+                self.context_manager.save_cross_review(
+                    self.round, "claude", reviewed_name, review
+                )
 
         return reviews
+
+    def set_claude_review(self, reviewed_model: str, review: dict[str, Any]) -> None:
+        """Claude Code의 리뷰 결과 설정.
+
+        Args:
+            reviewed_model: 리뷰 대상 모델 (gpt, gemini 등)
+            review: 리뷰 결과
+                - feedback: 전반적인 피드백
+                - agreement_points: 동의하는 점 리스트
+                - disagreement_points: 불일치 점 리스트
+        """
+        if not hasattr(self, "_claude_reviews"):
+            self._claude_reviews: dict[str, dict[str, Any]] = {}
+        self._claude_reviews[reviewed_model] = review
+
+    def _get_claude_review_for(
+        self, reviewed_model: str, reviewed_analysis: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Claude의 특정 모델 리뷰 결과 반환."""
+        if hasattr(self, "_claude_reviews") and reviewed_model in self._claude_reviews:
+            return self._claude_reviews[reviewed_model]
+
+        # 플레이스홀더
+        return {
+            "feedback": f"[Claude의 {reviewed_model} 리뷰 대기 중]",
+            "agreement_points": [],
+            "disagreement_points": [],
+            "requires_input": True,
+        }
 
     def is_consensus_reached(self) -> bool:
         """Phase 3: Check if consensus is reached.
@@ -237,7 +387,7 @@ class UltimateDebate:
         Returns:
             Dict mapping model name to updated position
         """
-        if not self.ai_clients:
+        if not self.ai_clients and not self.include_claude_self:
             # Placeholder: mock debate
             return self._mock_debate_round()
 
@@ -245,6 +395,7 @@ class UltimateDebate:
         tasks = []
         model_names = []
 
+        # 1. 외부 AI 토론 참여
         for model_name, client in self.ai_clients.items():
             own_position = self.current_analyses[model_name]
             opposing_views = [
@@ -256,15 +407,46 @@ class UltimateDebate:
             tasks.append(client.debate(self.task, own_position, opposing_views))
             model_names.append(model_name)
 
-        results = await asyncio.gather(*tasks)
+        if tasks:
+            results = await asyncio.gather(*tasks)
 
-        for model_name, result in zip(model_names, results):
-            debates[model_name] = result
+            for model_name, result in zip(model_names, results, strict=True):
+                debates[model_name] = result
 
-            # Save to context
-            self.context_manager.save_debate_round(self.round, model_name, result)
+                # Save to context
+                self.context_manager.save_debate_round(self.round, model_name, result)
+
+        # 2. Claude 토론 참여 (외부 주입 또는 플레이스홀더)
+        if self.include_claude_self and "claude" in self.current_analyses:
+            debate_result = self._get_claude_debate_result()
+            debates["claude"] = debate_result
+            self.context_manager.save_debate_round(self.round, "claude", debate_result)
 
         return debates
+
+    def set_claude_debate(self, debate_result: dict[str, Any]) -> None:
+        """Claude Code의 토론 결과 설정.
+
+        Args:
+            debate_result: 토론 결과
+                - updated_position: 업데이트된 입장
+                - rebuttals: 반박 리스트
+                - concessions: 수용 리스트
+        """
+        self._claude_debate_result = debate_result
+
+    def _get_claude_debate_result(self) -> dict[str, Any]:
+        """Claude의 토론 결과 반환."""
+        if hasattr(self, "_claude_debate_result") and self._claude_debate_result:
+            return self._claude_debate_result
+
+        # 플레이스홀더
+        return {
+            "updated_position": "[Claude의 토론 결과 대기 중]",
+            "rebuttals": [],
+            "concessions": [],
+            "requires_input": True,
+        }
 
     def get_final_strategy(self) -> dict[str, Any]:
         """Phase 5: Generate final strategy from consensus.
@@ -309,6 +491,11 @@ class UltimateDebate:
         """
         context_status = self.context_manager.get_status()
 
+        # 참여 모델 목록 (외부 AI + Claude 자체)
+        participating_models = list(self.ai_clients.keys())
+        if self.include_claude_self:
+            participating_models.append("claude (self)")
+
         return {
             "task_id": self.task_id,
             "current_round": self.round,
@@ -321,7 +508,9 @@ class UltimateDebate:
                 if self.consensus_result
                 else 0.0
             ),
-            "registered_models": list(self.ai_clients.keys()),
+            "registered_models": list(self.ai_clients.keys()),  # 외부 AI만
+            "participating_models": participating_models,  # Claude 포함 전체
+            "include_claude_self": self.include_claude_self,
             "context": context_status,
         }
 
