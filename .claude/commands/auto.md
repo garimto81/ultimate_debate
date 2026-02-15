@@ -1,83 +1,63 @@
 ---
 name: auto
-alias_of: "work --loop"
-version: 6.0.0
-description: /work --loop의 단축 명령 (자율 반복 모드)
+version: 19.0.0
+description: 하이브리드 자율 워크플로우 (OMC+BKIT 통합)
+aliases: [autopilot, ulw, ultrawork, ralph]
 deprecated: false
 ---
 
-# /auto - 자율 반복 모드
+# /auto - 하이브리드 자율 워크플로우
 
-> **`/work --loop`의 단축 명령입니다.**
+> **워크플로우 정의**: `.claude/skills/auto/SKILL.md`
+> **상세 PDCA/옵션 워크플로우**: `.claude/skills/auto/REFERENCE.md`
 
-## 매핑
+이 커맨드는 `/auto` 스킬을 실행합니다. 모든 워크플로우 로직은 SKILL.md에 정의되어 있습니다.
 
-| /auto 명령 | 실행되는 명령 |
-|-----------|--------------|
-| `/auto` | `/work --loop` |
-| `/auto "지시"` | `/work --loop "지시"` |
-| `/auto status` | `/work --loop status` |
-| `/auto stop` | `/work --loop stop` |
-| `/auto redirect "방향"` | `/work --loop redirect "방향"` |
-| `/auto --max N` | `/work --loop --max N` |
-| `/auto --debate "주제"` | 3AI 토론 즉시 실행 |
-
-## 특수 기능
-
-| 명령 | 동작 |
-|------|------|
-| `/auto --mockup "이름"` | `/mockup` 스킬 직접 호출 |
-| `/auto --debate "주제"` | Ultimate Debate 3AI 토론 |
-
-### --mockup 기본 설정
-
-| 항목 | 기본값 | 설명 |
-|------|--------|------|
-| Style | `wireframe` | Black & White 와이어프레임 |
-| Text & Media | 플레이스홀더 | `[Logo]`, `[Image]`, `Lorem ipsum` 등 |
-
-> **참고**: 흑백 박스 레이아웃으로 빠르게 구조 중심 목업 생성
-
-### --debate 사용법
+## 사용법
 
 ```bash
-# 3AI 토론 즉시 실행
-/auto --debate "캐싱 전략 선택: Redis vs Memcached"
+/auto "작업 내용"           # 명시적 작업 실행
+/auto                       # 자율 발견 모드
+/auto status                # 현재 상태
+/auto stop                  # 중지
+/auto resume                # 재개
 
-# 복잡한 아키텍처 결정
-/auto --debate "마이크로서비스 vs 모놀리식 아키텍처"
+# 옵션 체인
+/auto --gdocs --mockup "화면명"
+/auto --gmail "from:client"
+/auto --slack C09N8J3UJN9
+/auto --research "키워드"
+/auto --debate "주제"
+/auto --daily
+/auto --interactive "작업"
 ```
 
-> **참고**: `<!-- DECISION_REQUIRED -->` 마커 대신 `--debate` 플래그로 간단하게 토론 트리거
+## 옵션
 
-## 실행 지시
+| 옵션 | 설명 |
+|------|------|
+| `--gdocs` | Google Docs PRD 동기화 |
+| `--mockup` | 목업 생성 (하위: `--bnw`, `--force-html`, `--prd=`) |
+| `--debate` | 3AI 토론 |
+| `--research` | 리서치 모드 |
+| `--gmail` | Gmail 메일 분석 후 컨텍스트 주입 |
+| `--slack <채널ID>` | Slack 채널 분석 후 컨텍스트 주입 |
+| `--daily` | daily v3.0 9-Phase Pipeline |
+| `--interactive` | 각 Phase 전환 시 사용자 승인 요청 |
+| `--max N` | 최대 N회 반복 |
+| `--eco` | 토큰 절약 모드 (Haiku 우선) |
+| `--skip-analysis` | Phase 1 사전 분석 스킵 |
+| `--no-issue` | 이슈 생성/연동 스킵 |
+| `--strict` | E2E 1회 실패 시 중단 |
+| `--dry-run` | 판단만 출력, 실행 안함 |
 
-**$ARGUMENTS를 분석하여 `/work --loop`로 변환 후 Skill tool 호출:**
+## 레거시 키워드 라우팅
 
-```python
-# /auto → /work --loop
-Skill(skill="work", args="--loop")
-
-# /auto "지시" → /work --loop "지시"
-Skill(skill="work", args="--loop \"$ARGUMENTS\"")
-
-# /auto status → /work --loop status
-Skill(skill="work", args="--loop status")
-
-# /auto stop → /work --loop stop
-Skill(skill="work", args="--loop stop")
-
-# /auto --mockup "이름" → /mockup "이름"
-Skill(skill="mockup", args="$NAME")
-
-# /auto --debate "주제" → ultimate-debate 실행
-Skill(skill="ultimate-debate", args="\"$TOPIC\"")
-```
-
-## 상세 문서
-
-전체 기능은 `/work` 커맨드 참조: `.claude/commands/work.md`
-
----
-
-**이 커맨드는 `/work --loop`의 alias입니다. 새 기능은 `/work`에 추가됩니다.**
+| 키워드 | 동작 |
+|--------|------|
+| `ralph: 작업` | → `/auto "작업"` |
+| `ulw: 작업` | → `/auto "작업"` |
+| `ultrawork: 작업` | → `/auto "작업"` |
+| `ralplan: 작업` | → `/auto "작업"` (계획 모드 강제) |
+| `/work "작업"` | → `/auto "작업"` |
+| `/work --auto "작업"` | → `/auto "작업"` |

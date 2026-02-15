@@ -41,14 +41,14 @@ class OrchestratorState:
 
 # 에이전트 그룹 정의
 AGENT_GROUPS = {
-    "dev": ["architect", "coder", "tester", "docs"],
+    "dev": ["oh-my-claudecode:architect", "coder", "tester", "docs"],
     "test": ["unit", "integration", "e2e", "security"],
-    "review": ["code-reviewer", "security-auditor", "architect-reviewer"],
+    "review": ["oh-my-claudecode:code-reviewer", "oh-my-claudecode:security-reviewer", "architect-reviewer"],
 }
 
 # 에이전트 설명
 AGENT_DESCRIPTIONS = {
-    "architect": "설계 및 구조 분석",
+    "oh-my-claudecode:architect": "설계 및 구조 분석",
     "coder": "코드 구현",
     "tester": "테스트 작성",
     "docs": "문서화",
@@ -56,8 +56,8 @@ AGENT_DESCRIPTIONS = {
     "integration": "통합 테스트 실행",
     "e2e": "E2E 테스트 실행",
     "security": "보안 테스트 실행",
-    "code-reviewer": "코드 리뷰",
-    "security-auditor": "보안 리뷰",
+    "oh-my-claudecode:code-reviewer": "코드 리뷰",
+    "oh-my-claudecode:security-reviewer": "보안 리뷰",
     "architect-reviewer": "아키텍처 리뷰",
 }
 
