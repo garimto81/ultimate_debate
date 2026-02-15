@@ -1,9 +1,10 @@
 """OpenAI Provider
 
 ChatGPT Plus/Pro 구독자용 Browser OAuth 인증.
-Device Code Flow를 1순위로 사용 (localhost 콜백 차단 대응).
+Browser OAuth (PKCE) 사용.
 """
 
+import logging
 from datetime import datetime, timedelta
 
 import httpx
@@ -14,23 +15,16 @@ from ultimate_debate.auth.flows.browser_oauth import (
     OAuthConfig,
     generate_pkce_challenge,
 )
-from ultimate_debate.auth.flows.device_code import (
-    DeviceCodeConfig,
-    DeviceCodeError,
-    DeviceCodeOAuth,
-)
 from ultimate_debate.auth.providers.base import AuthToken, BaseProvider
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIProvider(BaseProvider):
     """OpenAI Browser OAuth Provider.
 
     ChatGPT Plus/Pro 구독자 전용.
-    Device Code Flow를 1순위로 사용 (localhost 콜백 차단 대응).
-
-    인증 우선순위:
-    1. Device Code Flow (가장 안정적)
-    2. 수동 URL 입력 모드 (fallback)
+    Browser OAuth (PKCE) 사용.
 
     Example:
         provider = OpenAIProvider()
@@ -38,13 +32,10 @@ class OpenAIProvider(BaseProvider):
     """
 
     # OpenAI OAuth 설정 (Codex CLI 호환)
-    # 참고: https://developers.openai.com/codex/auth/
-    AUTHORIZATION_ENDPOINT = "https://auth.openai.com/authorize"
+    AUTHORIZATION_ENDPOINT = "https://auth.openai.com/oauth/authorize"
     TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token"
-    # Device Code Endpoint (RFC 8628)
-    DEVICE_AUTHORIZATION_ENDPOINT = "https://auth.openai.com/oauth/device/code"
-    # Codex CLI의 공식 Client ID (Auth0)
-    CLIENT_ID = "DRivsnm2Mu42T3KOpqdtwB3NYviHYzwD"
+    # Codex CLI의 실제 Client ID
+    CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
     SCOPE = "openid profile email offline_access"
     # Codex CLI는 고정 포트 1455 사용
     REDIRECT_PORT = 1455
@@ -148,62 +139,71 @@ class OpenAIProvider(BaseProvider):
             scopes=result.get("scope", "").split() if result.get("scope") else [],
         )
 
-    async def login_device_code(self, timeout: int = 900) -> AuthToken:
-        """Device Code Flow로 로그인.
-
-        localhost 콜백 없이 인증을 완료합니다.
-        사용자는 브라우저에서 URL에 접속하여 코드를 입력합니다.
-
-        Args:
-            timeout: 최대 대기 시간 (초, 기본 15분)
+    def _try_codex_cli_token(self) -> AuthToken | None:
+        """Codex CLI의 저장된 토큰 재사용 시도.
 
         Returns:
-            AuthToken: 인증 토큰
-
-        Raises:
-            ValueError: 인증 실패 시
+            AuthToken | None: 유효한 토큰 또는 None
         """
-        config = DeviceCodeConfig(
-            client_id=self.client_id,
-            device_authorization_endpoint=self.DEVICE_AUTHORIZATION_ENDPOINT,
-            token_endpoint=self.TOKEN_ENDPOINT,
-            scope=self.SCOPE,
-        )
+        import base64
+        import json
+        from pathlib import Path
 
-        oauth = DeviceCodeOAuth(config)
+        codex_path = Path.home() / ".codex" / "auth.json"
+        if not codex_path.exists():
+            return None
 
         try:
-            token_response = await oauth.authenticate(timeout=timeout)
-        except DeviceCodeError as e:
-            raise ValueError(f"OpenAI Device Code 인증 실패: {e}") from e
+            codex = json.loads(codex_path.read_text())
+            tokens = codex.get("tokens", {})
+            access_token = tokens.get("access_token")
+            if not access_token:
+                return None
 
-        # 만료 시간 계산
-        expires_at = datetime.now() + timedelta(seconds=token_response.expires_in)
+            # JWT exp 추출
+            payload_b64 = access_token.split(".")[1]
+            payload_b64 += "=" * (4 - len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
 
-        return AuthToken(
-            provider=self.name,
-            access_token=token_response.access_token,
-            refresh_token=token_response.refresh_token,
-            expires_at=expires_at,
-            token_type=token_response.token_type,
-            scopes=token_response.scope.split() if token_response.scope else [],
-        )
+            exp_dt = datetime.fromtimestamp(payload["exp"])
+            if datetime.now() >= exp_dt:
+                return None
+
+            profile = payload.get("https://api.openai.com/profile", {})
+            auth_info = payload.get("https://api.openai.com/auth", {})
+
+            logger.info("Codex CLI 토큰 재사용")
+            return AuthToken(
+                provider=self.name,
+                access_token=access_token,
+                refresh_token=tokens.get("refresh_token"),
+                expires_at=exp_dt,
+                token_type="Bearer",
+                scopes=["openid", "profile", "email", "offline_access"],
+                account_info={
+                    "email": profile.get("email", ""),
+                    "plan_type": auth_info.get("chatgpt_plan_type", ""),
+                    "user_id": auth_info.get("chatgpt_user_id", ""),
+                    "account_id": auth_info.get(
+                        "chatgpt_account_id", ""
+                    ),
+                },
+            )
+        except Exception:
+            logger.debug("Codex CLI 토큰 읽기 실패")
+            return None
 
     async def login(
         self,
         manual_mode: bool = False,
-        use_device_code: bool = True,
         **kwargs,
     ) -> AuthToken:
-        """OAuth로 로그인.
+        """Browser OAuth로 로그인.
 
-        인증 우선순위:
-        1. Device Code Flow (기본, 가장 안정적)
-        2. 수동 URL 입력 모드 (fallback)
+        Codex CLI 토큰이 있으면 자동 재사용합니다.
 
         Args:
             manual_mode: True면 수동 URL 입력 모드 사용
-            use_device_code: True면 Device Code Flow 사용 (기본값)
 
         Returns:
             AuthToken: 인증 토큰
@@ -211,36 +211,37 @@ class OpenAIProvider(BaseProvider):
         Raises:
             ValueError: OAuth 인증 실패 시
         """
+        # Codex CLI 토큰 재사용 시도
+        codex_token = self._try_codex_cli_token()
+        if codex_token:
+            return codex_token
+
         from rich.console import Console
 
         console = Console()
 
-        # 1순위: Device Code Flow
-        if use_device_code and not manual_mode:
-            try:
-                return await self.login_device_code()
-            except ValueError as e:
-                # Device Code 실패 시 수동 모드로 전환
-                console.print()
-                console.print(f"[yellow]Device Code Flow 실패: {e}[/yellow]")
-                console.print("[dim]수동 URL 입력 모드로 전환합니다.[/dim]")
-                console.print()
-
-        # 2순위: 수동 URL 입력 모드
+        # Browser OAuth (자동 콜백 + 수동 모드 지원)
+        # Codex CLI와 동일한 추가 파라미터 사용
         config = OAuthConfig(
             client_id=self.client_id,
             authorization_endpoint=self.AUTHORIZATION_ENDPOINT,
             token_endpoint=self.TOKEN_ENDPOINT,
             redirect_uri="http://localhost:{port}/auth/callback",
             scope=self.SCOPE,
+            extra_params={
+                "id_token_add_organizations": "true",
+                "codex_cli_simplified_flow": "true",
+                "originator": "codex_cli_rs",
+            },
         )
 
         oauth = BrowserOAuth(
-            config, fixed_port=self.REDIRECT_PORT, manual_callback=True
+            config, fixed_port=self.REDIRECT_PORT, manual_callback=manual_mode
         )
 
         try:
-            token_response = await oauth.authenticate()
+            console.print("[dim]Browser OAuth 시작...[/dim]")
+            token_response = await oauth.authenticate(timeout=300)  # 5분 타임아웃
         except OAuthCallbackError as e:
             raise ValueError(f"OpenAI 인증 실패: {e}") from e
 
@@ -322,10 +323,10 @@ class OpenAIProvider(BaseProvider):
         if token.is_expired():
             return False
 
-        # API 호출로 검증
+        # UserInfo 엔드포인트로 검증 (OAuth 토큰 호환)
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                "https://api.openai.com/v1/models",
+                "https://auth.openai.com/userinfo",
                 headers={"Authorization": f"Bearer {token.access_token}"},
             )
             return response.status_code == 200
@@ -346,5 +347,8 @@ class OpenAIProvider(BaseProvider):
                 headers={"Authorization": f"Bearer {token.access_token}"},
             )
             if response.status_code == 200:
-                return response.json()
+                try:
+                    return response.json()
+                except Exception:
+                    return None
         return None

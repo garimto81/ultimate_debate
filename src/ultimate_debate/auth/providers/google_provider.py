@@ -1,12 +1,12 @@
 """Google Provider
 
-Gemini API용 인증.
-- API Key 방식
+Gemini API용 Browser OAuth 인증.
 - Gemini CLI 토큰 재사용
 - Browser OAuth 2.0 + PKCE
 """
 
 import json
+import logging
 import os
 import socket
 from datetime import datetime, timedelta
@@ -20,6 +20,8 @@ from ultimate_debate.auth.flows.browser_oauth import (
     OAuthConfig,
 )
 from ultimate_debate.auth.providers.base import AuthToken, BaseProvider
+
+logger = logging.getLogger(__name__)
 
 
 def try_import_gemini_cli_token() -> AuthToken | None:
@@ -175,7 +177,7 @@ class GoogleProvider(BaseProvider):
         # 1. Gemini CLI 토큰 확인 (우선)
         cli_token = try_import_gemini_cli_token()
         if cli_token and not cli_token.is_expired():
-            print("[GoogleProvider] Gemini CLI 토큰 재사용")
+            logger.info("Gemini CLI 토큰 재사용")
             return cli_token
 
         # 2. CLI 토큰 없거나 만료 시 브라우저 로그인
@@ -210,43 +212,6 @@ class GoogleProvider(BaseProvider):
             expires_at=expires_at,
             token_type=token_response.token_type,
             scopes=token_response.scope.split() if token_response.scope else [],
-        )
-
-    async def login_with_api_key(self, api_key: str) -> AuthToken:
-        """API Key로 인증
-
-        Google AI Studio에서 발급받은 API Key를 사용합니다.
-        https://aistudio.google.com/app/apikey
-
-        Args:
-            api_key: Google AI Studio API Key
-
-        Returns:
-            AuthToken: API Key 토큰 (만료 없음)
-
-        Raises:
-            ValueError: API Key가 유효하지 않은 경우
-        """
-        # API Key 유효성 검증
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                self.GEMINI_MODELS_ENDPOINT,
-                params={"key": api_key},
-            )
-
-            if response.status_code != 200:
-                error_data = response.json().get("error", {})
-                error_msg = error_data.get("message", "Unknown error")
-                raise ValueError(f"API Key 검증 실패: {error_msg}")
-
-        # API Key를 access_token으로 저장 (만료 없음)
-        return AuthToken(
-            provider=self.name,
-            access_token=api_key,
-            refresh_token=None,
-            expires_at=None,  # API Key는 만료 없음
-            token_type="api_key",  # OAuth와 구분
-            scopes=["generative-language"],
         )
 
     async def refresh(self, token: AuthToken) -> AuthToken:

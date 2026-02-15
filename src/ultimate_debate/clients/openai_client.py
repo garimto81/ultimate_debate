@@ -6,6 +6,8 @@ Browser OAuth 인증과 연동.
 Codex CLI 호환 - chatgpt.com/backend-api/codex/responses 엔드포인트 사용.
 """
 
+import json
+import logging
 import uuid
 from typing import Any
 
@@ -14,6 +16,8 @@ import httpx
 from ultimate_debate.auth import AuthToken, RetryLimitExceededError, TokenStore
 from ultimate_debate.auth.providers import OpenAIProvider
 from ultimate_debate.clients.base import BaseAIClient
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIClient(BaseAIClient):
@@ -38,8 +42,12 @@ class OpenAIClient(BaseAIClient):
     API_BASE = "https://api.openai.com/v1"
 
     # 기본 시스템 지시사항 (Codex API 필수)
-    DEFAULT_INSTRUCTIONS = """You are a helpful AI assistant specialized in code analysis, review, and technical discussions.
-Respond in JSON format when requested. Be precise and thorough in your analysis."""
+    DEFAULT_INSTRUCTIONS = (
+        "You are a helpful AI assistant specialized in "
+        "code analysis, review, and technical discussions. "
+        "Respond in JSON format when requested. "
+        "Be precise and thorough in your analysis."
+    )
 
     def __init__(
         self, model_name: str = "gpt-4o", token_store: TokenStore | None = None
@@ -114,8 +122,6 @@ Respond in JSON format when requested. Be precise and thorough in your analysis.
         Returns:
             dict: Chat Completions 형식으로 정규화된 응답
         """
-        import json
-
         # 메시지를 Codex input 형식으로 변환
         # system → developer, user → user, assistant → assistant
         codex_input = []
@@ -269,9 +275,17 @@ Respond in JSON format when requested. Be precise and thorough in your analysis.
         ]
 
         response = await self._call_api(messages)
-        import json
-
-        return json.loads(response["choices"][0]["message"]["content"])
+        content = response["choices"][0]["message"]["content"]
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            logger.warning("OpenAI analyze: JSON parse failed, returning raw content")
+            return {
+                "analysis": content,
+                "conclusion": "",
+                "confidence": 0.5,
+                "key_points": [],
+            }
 
     async def review(
         self, task: str, peer_analysis: dict[str, Any], own_analysis: dict[str, Any]
@@ -311,9 +325,16 @@ Respond in JSON format when requested. Be precise and thorough in your analysis.
         ]
 
         response = await self._call_api(messages)
-        import json
-
-        return json.loads(response["choices"][0]["message"]["content"])
+        content = response["choices"][0]["message"]["content"]
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            logger.warning("OpenAI review: JSON parse failed, returning raw content")
+            return {
+                "feedback": content,
+                "agreement_points": [],
+                "disagreement_points": [],
+            }
 
     async def debate(
         self,
@@ -364,6 +385,17 @@ Respond in JSON format when requested. Be precise and thorough in your analysis.
         ]
 
         response = await self._call_api(messages)
-        import json
-
-        return json.loads(response["choices"][0]["message"]["content"])
+        content = response["choices"][0]["message"]["content"]
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            logger.warning("OpenAI debate: JSON parse failed, returning raw content")
+            return {
+                "updated_position": {
+                    "conclusion": content,
+                    "confidence": 0.5,
+                    "key_points": [],
+                },
+                "rebuttals": [],
+                "concessions": [],
+            }

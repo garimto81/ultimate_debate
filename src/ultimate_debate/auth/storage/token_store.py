@@ -55,8 +55,8 @@ class TokenStore:
         """토큰 파일 경로"""
         return self.storage_dir / f"{provider}.json"
 
-    async def save(self, token: AuthToken) -> bool:
-        """토큰 저장
+    def _save_to_file(self, token: AuthToken) -> bool:
+        """파일 기반 저장 (fallback)
 
         Args:
             token: 저장할 토큰
@@ -65,24 +65,45 @@ class TokenStore:
             bool: 성공 여부
         """
         try:
-            if HAS_KEYRING:
+            file_path = self._token_file_path(token.provider)
+            with open(file_path, "w") as f:
+                json.dump(token.to_dict(), f, indent=2)
+            # 보안: 사용자만 읽기/쓰기 (Windows에서는 무시됨)
+            try:
+                file_path.chmod(0o600)
+            except Exception:
+                pass  # Windows에서는 chmod가 제한적
+            return True
+        except Exception as e:
+            print(f"File save error: {e}")
+            return False
+
+    async def save(self, token: AuthToken) -> bool:
+        """토큰 저장
+
+        keyring 저장 실패 시 파일 기반 fallback 사용.
+
+        Args:
+            token: 저장할 토큰
+
+        Returns:
+            bool: 성공 여부
+        """
+        if HAS_KEYRING:
+            try:
                 # keyring 사용 (암호화 저장)
                 token_data = json.dumps(token.to_dict())
                 keyring.set_password(self.SERVICE_NAME, token.provider, token_data)
-            else:
-                # 파일 기반 저장 (권한 제한)
-                file_path = self._token_file_path(token.provider)
-                with open(file_path, "w") as f:
-                    json.dump(token.to_dict(), f, indent=2)
-                # 보안: 사용자만 읽기/쓰기
-                file_path.chmod(0o600)
-            return True
-        except Exception as e:
-            print(f"Token save error: {e}")
-            return False
+                return True
+            except Exception:
+                # keyring 실패 시 파일 fallback (조용히 전환)
+                pass
 
-    async def load(self, provider: str) -> AuthToken | None:
-        """토큰 로드
+        # 파일 기반 저장 (fallback 또는 keyring 미설치)
+        return self._save_to_file(token)
+
+    def _load_from_file(self, provider: str) -> AuthToken | None:
+        """파일에서 토큰 로드
 
         Args:
             provider: Provider 이름
@@ -91,18 +112,36 @@ class TokenStore:
             AuthToken 또는 None
         """
         try:
-            if HAS_KEYRING:
+            file_path = self._token_file_path(provider)
+            if file_path.exists():
+                with open(file_path) as f:
+                    return AuthToken.from_dict(json.load(f))
+        except Exception:
+            pass
+        return None
+
+    async def load(self, provider: str) -> AuthToken | None:
+        """토큰 로드
+
+        keyring과 파일 둘 다 확인.
+
+        Args:
+            provider: Provider 이름
+
+        Returns:
+            AuthToken 또는 None
+        """
+        # 1. keyring에서 시도
+        if HAS_KEYRING:
+            try:
                 token_data = keyring.get_password(self.SERVICE_NAME, provider)
                 if token_data:
                     return AuthToken.from_dict(json.loads(token_data))
-            else:
-                file_path = self._token_file_path(provider)
-                if file_path.exists():
-                    with open(file_path) as f:
-                        return AuthToken.from_dict(json.load(f))
-        except Exception as e:
-            print(f"Token load error: {e}")
-        return None
+            except Exception:
+                pass
+
+        # 2. 파일에서 시도 (fallback)
+        return self._load_from_file(provider)
 
     async def delete(self, provider: str) -> bool:
         """토큰 삭제
@@ -166,25 +205,25 @@ class TokenStore:
     def load_sync(self, provider: str) -> AuthToken | None:
         """토큰 로드 (동기 버전)
 
+        keyring과 파일 둘 다 확인.
+
         Args:
             provider: Provider 이름
 
         Returns:
             AuthToken 또는 None
         """
-        try:
-            if HAS_KEYRING:
+        # 1. keyring에서 시도
+        if HAS_KEYRING:
+            try:
                 token_data = keyring.get_password(self.SERVICE_NAME, provider)
                 if token_data:
                     return AuthToken.from_dict(json.loads(token_data))
-            else:
-                file_path = self._token_file_path(provider)
-                if file_path.exists():
-                    with open(file_path) as f:
-                        return AuthToken.from_dict(json.load(f))
-        except Exception as e:
-            print(f"Token load error: {e}")
-        return None
+            except Exception:
+                pass
+
+        # 2. 파일에서 시도 (fallback)
+        return self._load_from_file(provider)
 
     def get_valid_token(self, provider: str) -> AuthToken | None:
         """유효한 토큰만 반환 (동기 버전)

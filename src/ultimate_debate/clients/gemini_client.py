@@ -9,6 +9,8 @@ Browser OAuth 인증과 연동.
 3. Google AI (x-goog-user-project 헤더 사용)
 """
 
+import json
+import logging
 import os
 from typing import Any
 
@@ -17,6 +19,8 @@ import httpx
 from ultimate_debate.auth import AuthToken, RetryLimitExceededError, TokenStore
 from ultimate_debate.auth.providers import GoogleProvider
 from ultimate_debate.clients.base import BaseAIClient
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiClient(BaseAIClient):
@@ -354,9 +358,17 @@ class GeminiClient(BaseAIClient):
         ]
 
         response = await self._call_api(contents)
-        import json
-
-        return json.loads(self._extract_text(response))
+        text = self._extract_text(response)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning("Gemini analyze: JSON parse failed, returning raw content")
+            return {
+                "analysis": text,
+                "conclusion": "",
+                "confidence": 0.5,
+                "key_points": [],
+            }
 
     async def review(
         self, task: str, peer_analysis: dict[str, Any], own_analysis: dict[str, Any]
@@ -395,9 +407,16 @@ class GeminiClient(BaseAIClient):
         ]
 
         response = await self._call_api(contents)
-        import json
-
-        return json.loads(self._extract_text(response))
+        text = self._extract_text(response)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning("Gemini review: JSON parse failed, returning raw content")
+            return {
+                "feedback": text,
+                "agreement_points": [],
+                "disagreement_points": [],
+            }
 
     async def debate(
         self,
@@ -447,6 +466,17 @@ class GeminiClient(BaseAIClient):
         ]
 
         response = await self._call_api(contents)
-        import json
-
-        return json.loads(self._extract_text(response))
+        text = self._extract_text(response)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning("Gemini debate: JSON parse failed, returning raw content")
+            return {
+                "updated_position": {
+                    "conclusion": text,
+                    "confidence": 0.5,
+                    "key_points": [],
+                },
+                "rebuttals": [],
+                "concessions": [],
+            }

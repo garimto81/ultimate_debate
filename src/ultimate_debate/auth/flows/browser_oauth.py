@@ -6,10 +6,10 @@ Claude Code /login과 동일한 방식의 브라우저 기반 OAuth 인증.
 
 import base64
 import hashlib
+import logging
 import secrets
 import socket
 import threading
-import time
 import webbrowser
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -19,11 +19,14 @@ import httpx
 from rich.console import Console
 from rich.panel import Panel
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 # 세션별 콜백 결과 저장소 (state를 키로 사용)
 _callback_results: dict[str, dict] = {}
 _callback_lock = threading.Lock()
+# 세션별 이벤트 (콜백 수신 알림)
+_callback_events: dict[str, threading.Event] = {}
 
 
 @dataclass
@@ -45,6 +48,7 @@ class OAuthConfig:
     redirect_uri: str
     scope: str
     client_secret: str | None = None
+    extra_params: dict | None = None  # 추가 인증 파라미터
 
 
 @dataclass
@@ -106,20 +110,34 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         """GET 요청 처리 (OAuth callback)."""
         parsed = urlparse(self.path)
 
+        logger.debug("Received request: %s", parsed.path)
+
         # favicon.ico 및 기타 브라우저 자동 요청 무시
         if parsed.path in ["/favicon.ico", "/robots.txt"]:
             self.send_response(204)  # No Content
             self.end_headers()
             return
 
+        # OAuth 콜백 경로가 아니면 무시
+        if parsed.path not in ["/auth/callback", "/callback"]:
+            logger.warning("Invalid callback path: %s", parsed.path)
+            self.send_response(404)
+            self.end_headers()
+            return
+
         params = parse_qs(parsed.query)
+
+        logger.debug("Callback params: %s", list(params.keys()))
 
         # state 추출 (세션 식별)
         state = params.get("state", [None])[0]
+        state_preview = state[:16] if state else None
+        logger.debug("State: %s...", state_preview)
 
         # 에러 체크
         if "error" in params:
             error = params["error"][0]
+            logger.error("OAuth error: %s", error)
             if state:
                 with _callback_lock:
                     _callback_results[state] = {
@@ -134,17 +152,29 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         # 코드 추출
         if "code" in params:
             auth_code = params["code"][0]
+            code_preview = auth_code[:16]
+            logger.debug("Auth code received: %s...", code_preview)
             if state:
                 with _callback_lock:
                     _callback_results[state] = {
                         "auth_code": auth_code,
                         "error": None
                     }
+                    logger.debug("Stored callback result: %s...", state_preview)
+                    # 이벤트 시그널 (대기 중인 스레드에 알림)
+                    if state in _callback_events:
+                        _callback_events[state].set()
+                        logger.debug("Event set: %s", state_preview)
+            else:
+                logger.warning("No state in callback, cannot store result")
             self._send_success_response()
         else:
-            # code가 없는 요청은 무시 (브라우저 자동 요청 등)
-            self.send_response(204)
+            # code가 없는 요청은 에러
+            logger.warning("No code in callback parameters")
+            self.send_response(400)
+            self.send_header("Content-type", "text/plain")
             self.end_headers()
+            self.wfile.write(b"Missing authorization code")
 
     def _send_success_response(self):
         """성공 응답 전송."""
@@ -264,6 +294,7 @@ class BrowserOAuth:
         config: OAuthConfig,
         fixed_port: int | None = None,
         manual_callback: bool = False,
+        auto_open_browser: bool = False,
     ):
         """초기화.
 
@@ -271,12 +302,14 @@ class BrowserOAuth:
             config: OAuth 설정
             fixed_port: 고정 포트 (None이면 자동 할당)
             manual_callback: 수동 콜백 모드 (URL 직접 입력)
+            auto_open_browser: 브라우저 자동 열기 (기본 False)
         """
         self.config = config
         self.pkce = generate_pkce_challenge()
         self.state = secrets.token_urlsafe(32)
         self.port = fixed_port if fixed_port else find_free_port()
         self.manual_callback = manual_callback
+        self.auto_open_browser = auto_open_browser
 
         # redirect_uri에 포트 적용
         if "{port}" in self.config.redirect_uri:
@@ -297,6 +330,10 @@ class BrowserOAuth:
             "code_challenge": self.pkce.code_challenge,
             "code_challenge_method": self.pkce.code_challenge_method,
         }
+
+        # 추가 파라미터 병합
+        if self.config.extra_params:
+            params.update(self.config.extra_params)
 
         return f"{self.config.authorization_endpoint}?{urlencode(params)}"
 
@@ -448,47 +485,79 @@ class BrowserOAuth:
         # 이 세션의 state로 결과를 추적
         session_state = self.state
 
-        # 로컬 서버 시작
-        server = HTTPServer(("localhost", self.port), OAuthCallbackHandler)
-        server.timeout = timeout
+        # 이벤트 생성 (콜백 수신 대기용)
+        callback_event = threading.Event()
+        with _callback_lock:
+            _callback_events[session_state] = callback_event
+
+        # 로컬 서버 시작 (0.0.0.0으로 모든 인터페이스 바인딩)
+        # Windows에서 localhost와 127.0.0.1 모두 받기 위해
+        server = HTTPServer(("0.0.0.0", self.port), OAuthCallbackHandler)
+        server.timeout = 1  # 1초마다 이벤트 체크
+        logger.debug("Server on 0.0.0.0:%d", self.port)
 
         # 인증 URL 생성
         auth_url = self._build_authorization_url()
 
         # 안내 출력
         console.print()
-        console.print(
-            Panel.fit(
-                f"[bold cyan]브라우저가 자동으로 열립니다.[/bold cyan]\n\n"
-                f"열리지 않으면 아래 URL을 직접 열어주세요:\n"
-                f"[dim]{auth_url[:80]}...[/dim]",
-                title="[AUTH] Login Required",
-                border_style="cyan",
+        if self.auto_open_browser:
+            console.print(
+                Panel.fit(
+                    f"[bold cyan]브라우저가 자동으로 열립니다.[/bold cyan]\n\n"
+                    f"열리지 않으면 아래 URL을 직접 열어주세요:\n"
+                    f"[dim]{auth_url[:80]}...[/dim]",
+                    title="[AUTH] Login Required",
+                    border_style="cyan",
+                )
             )
-        )
-        console.print()
-
-        # 브라우저 열기
-        webbrowser.open(auth_url)
+            console.print()
+            webbrowser.open(auth_url)
+        else:
+            # URL만 출력 (사용자가 직접 복사)
+            console.print(
+                Panel.fit(
+                    f"[bold cyan]아래 URL을 브라우저에서 열어주세요:[/bold cyan]\n\n"
+                    f"[link={auth_url}]{auth_url}[/link]",
+                    title="[AUTH] Login Required",
+                    border_style="cyan",
+                )
+            )
+            console.print()
 
         console.print("[dim]브라우저에서 로그인 후 대기 중...[/dim]")
 
         # 서버를 별도 스레드에서 실행
-        # 인증 코드가 수신될 때까지 반복 처리 (favicon.ico 등 무시)
-        def serve():
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                server.handle_request()
-                # 이 세션의 콜백이 수신되면 종료
-                with _callback_lock:
-                    if session_state in _callback_results:
-                        break
+        server_stop = threading.Event()
 
-        thread = threading.Thread(target=serve)
+        def serve():
+            logger.debug("Listening on port %d", self.port)
+            while not server_stop.is_set():
+                server.handle_request()
+            logger.debug("Server exiting")
+
+        thread = threading.Thread(target=serve, daemon=True)
         thread.start()
-        thread.join(timeout=timeout)
+
+        # 콜백 이벤트 대기 (타임아웃까지)
+        logger.debug("Waiting for callback (timeout: %ds)", timeout)
+        callback_received = callback_event.wait(timeout=timeout)
+
+        # 서버 중지 신호
+        server_stop.set()
+
+        # 서버 깨우기 위해 더미 요청 (블로킹 handle_request 탈출)
+        try:
+            import urllib.request
+            shutdown_url = f"http://localhost:{self.port}/__shutdown__"
+            urllib.request.urlopen(shutdown_url, timeout=1)
+        except Exception:
+            pass  # 무시
+
+        thread.join(timeout=2)  # 스레드 종료 대기
 
         server.server_close()
+        logger.debug("HTTP Server closed")
 
         # 결과 확인
         with _callback_lock:
@@ -496,8 +565,20 @@ class BrowserOAuth:
             # 결과를 가져온 후 삭제 (메모리 정리)
             if session_state in _callback_results:
                 del _callback_results[session_state]
+            if session_state in _callback_events:
+                del _callback_events[session_state]
+
+            logger.debug("Callback result: %s", result)
+
+        state_preview = session_state[:16]
+        if not callback_received:
+            logger.error("Timeout waiting for callback: %s...", state_preview)
+            raise OAuthCallbackError("인증 시간이 초과되었습니다.")
 
         if result is None:
+            logger.error("No callback received: %s...", state_preview)
+            states = list(_callback_results.keys())
+            logger.debug("Available states: %s", states)
             raise OAuthCallbackError("인증 시간이 초과되었습니다.")
 
         if result["error"]:
