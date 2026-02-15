@@ -1,0 +1,60 @@
+Analyze the Ultimate Debate project's Gemini authentication system and propose an improvement design in JSON format.
+
+## Current Implementation
+
+### GoogleProvider (google_provider.py)
+- Gemini CLI token reuse (~/.gemini/oauth_creds.json)
+- Browser OAuth 2.0 + PKCE (Google OAuth)
+- Client ID: Gemini CLI public Client ID (for Code Assist)
+- Scope: cloud-platform openid email
+- Dynamic port allocation (8080~8089)
+- Token refresh/validate/logout implemented
+
+### GeminiClient (gemini_client.py)
+- 3 API endpoints supported:
+  1. Code Assist (cloudcode-pa.googleapis.com) - default
+  2. Vertex AI (requires project ID)
+  3. Google AI (generativelanguage.googleapis.com)
+- ensure_authenticated() flow: stored token -> refresh -> login
+- 401: re-authenticate, 403: detailed error messages
+
+### Open Issues
+1. Issue #3: Google Cloud SDK Client ID doesn't support generative-language scope
+   - Currently solved by using Gemini CLI public Client ID
+2. Issue #4: Windows Credential Manager token storage failure
+   - keyring library compatibility issue
+
+### Comparison with OpenAI Auth
+- OpenAI: fixed port 1455, Codex CLI token reuse added
+- Google: dynamic port 8080~, Gemini CLI token reuse
+- OpenAI: Codex API streaming required / Google: REST API single call
+
+## Analysis Requested
+
+1. Strengths and weaknesses of current auth flow
+2. Missing features compared to OpenAI auth
+3. Improvements for Windows environment (Issue #4)
+4. Security improvements
+5. Concrete design proposal (code-level)
+
+Respond in Korean. JSON format:
+{
+    "analysis": "overall analysis",
+    "strengths": ["strength1", "strength2"],
+    "weaknesses": ["weakness1", "weakness2"],
+    "missing_features": ["missing1", "missing2"],
+    "design_proposal": {
+        "title": "proposal title",
+        "changes": [
+            {
+                "file": "filename",
+                "description": "change description",
+                "priority": "high/medium/low",
+                "details": "implementation details"
+            }
+        ]
+    },
+    "security_recommendations": ["rec1"],
+    "conclusion": "final conclusion",
+    "confidence": 0.0~1.0
+}
