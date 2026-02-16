@@ -1,26 +1,23 @@
-"""Ultimate Debate Auth Module
+"""Ultimate Debate Auth Module (Re-export Shim)
 
-Multi-AI 인증 통합 모듈.
-OpenAI, Google Gemini, Poe 등 다양한 AI 서비스 인증 지원.
+글로벌 ai_auth 패키지에서 re-export.
+하위 호환성을 위해 유지됩니다.
 
-Example:
-    from ultimate_debate.auth import TokenStore, OpenAIProvider
-
-    store = TokenStore()
-    provider = OpenAIProvider()
-    token = await provider.login()
-    await store.save(token)
+실제 구현: C:\\claude\\lib\\ai_auth\\
+설치: uv pip install -e C:\\claude\\lib\\ai_auth
 """
 
-from ultimate_debate.auth.exceptions import (
+# Re-export from ai_auth package
+from ai_auth import (
     AuthenticationError,
+    AuthToken,
+    BaseProvider,
     OAuthError,
     RetryLimitExceededError,
     TokenExpiredError,
     TokenNotFoundError,
+    TokenStore,
 )
-from ultimate_debate.auth.providers.base import AuthToken, BaseProvider
-from ultimate_debate.auth.storage.token_store import TokenStore
 
 __all__ = [
     # Core

@@ -1,0 +1,369 @@
+{
+  "timestamp": "2026-02-15T22:09:41.502Z",
+  "reason": "compaction",
+  "status": {
+    "version": "2.0",
+    "lastUpdated": "2026-02-15T21:44:55.121Z",
+    "activeFeatures": [
+      "clients",
+      "providers",
+      "flows",
+      "test_auth"
+    ],
+    "primaryFeature": "clients",
+    "features": {
+      "clients": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-15T21:15:08.058Z",
+          "lastUpdated": "2026-02-15T21:23:05.016Z"
+        },
+        "lastFile": "C:\\claude\\ultimate-debate\\src\\ultimate_debate\\clients\\openai_client.py"
+      },
+      "providers": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-15T21:16:37.202Z",
+          "lastUpdated": "2026-02-15T21:22:18.049Z"
+        },
+        "lastFile": "C:\\claude\\ultimate-debate\\src\\ultimate_debate\\auth\\providers\\google_provider.py"
+      },
+      "flows": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-15T21:19:34.027Z",
+          "lastUpdated": "2026-02-15T21:22:04.026Z"
+        },
+        "lastFile": "C:\\claude\\ultimate-debate\\src\\ultimate_debate\\auth\\flows\\browser_oauth.py"
+      },
+      "test_auth": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-15T21:43:15.099Z",
+          "lastUpdated": "2026-02-15T21:44:55.121Z"
+        },
+        "lastFile": "C:\\claude\\ultimate-debate\\tests\\test_auth\\test_openai_client.py"
+      }
+    },
+    "pipeline": {
+      "currentPhase": 1,
+      "level": "Dynamic",
+      "phaseHistory": []
+    },
+    "session": {
+      "startedAt": "2026-02-15T20:58:12.424Z",
+      "onboardingCompleted": false,
+      "lastActivity": "2026-02-15T21:44:55.121Z"
+    },
+    "history": [
+      {
+        "timestamp": "2026-02-15T21:15:08.058Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:15:16.386Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:15:23.578Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:15:30.981Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:15:40.079Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:15:49.280Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:15:57.691Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:16:06.263Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:16:15.678Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:16:37.202Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:16:54.507Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:18:59.100Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:19:07.559Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:19:15.383Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:19:25.780Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:19:34.027Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:19:41.250Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:19:47.709Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:19:53.329Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:19:59.470Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:04.718Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:10.337Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:16.357Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:22.089Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:28.123Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:33.785Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:40.316Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:45.535Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:51.021Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:20:56.929Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:21:02.223Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:21:07.393Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:21:13.163Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:21:20.069Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:21:27.051Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:21:33.064Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:22:04.026Z",
+        "feature": "flows",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:22:11.389Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:22:18.049Z",
+        "feature": "providers",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:22:31.376Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:22:45.938Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:22:52.185Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:23:05.016Z",
+        "feature": "clients",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:43:15.099Z",
+        "feature": "test_auth",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:44:00.928Z",
+        "feature": "test_auth",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:44:39.280Z",
+        "feature": "test_auth",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:44:47.603Z",
+        "feature": "test_auth",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-15T21:44:55.121Z",
+        "feature": "test_auth",
+        "phase": "do",
+        "action": "updated"
+      }
+    ]
+  }
+}

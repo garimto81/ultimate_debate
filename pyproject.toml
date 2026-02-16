@@ -4,6 +4,7 @@ version = "1.0.0"
 description = "Multi-AI Consensus Debate Engine"
 requires-python = ">=3.12"
 dependencies = [
+    "ai-auth @ file:///C:/claude/lib/ai_auth",  # Global AI auth (Browser OAuth)
     "scikit-learn>=1.4.0",  # TF-IDF for semantic comparison
     "httpx>=0.25.0",        # HTTP client for API calls
     "rich>=13.0",           # CLI output formatting
@@ -21,6 +22,9 @@ secure = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ultimate_debate"]

@@ -16,8 +16,8 @@ from typing import Any
 
 import httpx
 
-from ultimate_debate.auth import AuthToken, RetryLimitExceededError, TokenStore
-from ultimate_debate.auth.providers import GoogleProvider
+from ai_auth import AuthToken, RetryLimitExceededError, TokenStore
+from ai_auth.providers import GoogleProvider
 from ultimate_debate.clients.base import BaseAIClient
 
 logger = logging.getLogger(__name__)
@@ -35,13 +35,13 @@ class GeminiClient(BaseAIClient):
 
     Example:
         # Code Assist 모드 (기본값, 설정 불필요!)
-        client = GeminiClient(model_name="gemini-2.0-flash")
+        client = GeminiClient(model_name="gemini-2.5-flash")
         await client.ensure_authenticated()
         result = await client.analyze("코드 리뷰 요청", context)
 
         # Vertex AI 모드 (프로젝트 ID 필요)
         client = GeminiClient(
-            model_name="gemini-2.0-flash",
+            model_name="gemini-2.5-flash",
             project_id="my-gcp-project",
             use_code_assist=False,
             use_vertex_ai=True
@@ -59,7 +59,7 @@ class GeminiClient(BaseAIClient):
 
     def __init__(
         self,
-        model_name: str = "gemini-2.0-flash",
+        model_name: str = "gemini-2.5-flash",
         token_store: TokenStore | None = None,
         project_id: str | None = None,
         location: str = "us-central1",
@@ -82,6 +82,8 @@ class GeminiClient(BaseAIClient):
 
         # Vertex AI 모델명 매핑 (일반 모델명 → Vertex AI 모델명)
         self._vertex_model_map = {
+            "gemini-2.5-pro": "gemini-2.5-pro",
+            "gemini-2.5-flash": "gemini-2.5-flash",
             "gemini-2.0-flash": "gemini-2.0-flash-001",
             "gemini-2.0-pro": "gemini-2.0-pro-001",
             "gemini-1.5-flash": "gemini-1.5-flash-002",
@@ -90,6 +92,8 @@ class GeminiClient(BaseAIClient):
 
         # Code Assist 모델명 매핑 (models/ 접두사 없이)
         self._code_assist_model_map = {
+            "gemini-2.5-pro": "gemini-2.5-pro",
+            "gemini-2.5-flash": "gemini-2.5-flash",
             "gemini-2.0-flash": "gemini-2.0-flash",
             "gemini-2.0-pro": "gemini-2.0-pro",
             "gemini-1.5-flash": "gemini-1.5-flash",

@@ -1,12 +1,12 @@
 ---
 name: auto
-version: 19.0.0
-description: 하이브리드 자율 워크플로우 (OMC+BKIT 통합)
+version: 20.1.0
+description: PDCA Orchestrator - Agent Teams + PDCA 통합 워크플로우
 aliases: [autopilot, ulw, ultrawork, ralph]
 deprecated: false
 ---
 
-# /auto - 하이브리드 자율 워크플로우
+# /auto - PDCA Orchestrator (Agent Teams)
 
 > **워크플로우 정의**: `.claude/skills/auto/SKILL.md`
 > **상세 PDCA/옵션 워크플로우**: `.claude/skills/auto/REFERENCE.md`

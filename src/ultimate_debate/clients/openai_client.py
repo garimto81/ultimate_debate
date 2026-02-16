@@ -13,8 +13,8 @@ from typing import Any
 
 import httpx
 
-from ultimate_debate.auth import AuthToken, RetryLimitExceededError, TokenStore
-from ultimate_debate.auth.providers import OpenAIProvider
+from ai_auth import AuthToken, RetryLimitExceededError, TokenStore
+from ai_auth.providers import OpenAIProvider
 from ultimate_debate.clients.base import BaseAIClient
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class OpenAIClient(BaseAIClient):
     - api.openai.com/v1 (API 키 기반, fallback)
 
     Example:
-        client = OpenAIClient(model_name="gpt-5-codex")
+        client = OpenAIClient(model_name="gpt-5.2-codex")
         await client.ensure_authenticated()
         result = await client.analyze("코드 리뷰 요청", context)
     """
@@ -50,7 +50,7 @@ class OpenAIClient(BaseAIClient):
     )
 
     def __init__(
-        self, model_name: str = "gpt-4o", token_store: TokenStore | None = None
+        self, model_name: str = "gpt-5.2-codex", token_store: TokenStore | None = None
     ):
         super().__init__(model_name)
         self.token_store = token_store or TokenStore()

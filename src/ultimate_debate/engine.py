@@ -33,8 +33,8 @@ class UltimateDebate:
         )
 
         # 외부 AI만 등록 (Claude는 자동 참여)
-        debate.register_ai_client("gpt", OpenAIClient("gpt-4o"))
-        debate.register_ai_client("gemini", GeminiClient("gemini-2.0-flash-exp"))
+        debate.register_ai_client("gpt", OpenAIClient("gpt-5.2-codex"))
+        debate.register_ai_client("gemini", GeminiClient("gemini-2.5-flash"))
 
         result = await debate.run()
     """

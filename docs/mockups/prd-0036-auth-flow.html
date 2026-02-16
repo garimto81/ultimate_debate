@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRD-0036: Antigravity Multi-Account Auth Flow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #00d9ff;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+
+        /* Section Styles */
+        .section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section-title {
+            color: #00d9ff;
+            font-size: 1.4em;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 24px;
+            background: linear-gradient(180deg, #00d9ff, #0099ff);
+            border-radius: 2px;
+        }
+
+        /* Architecture Diagram */
+        .architecture {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .arch-box {
+            background: linear-gradient(135deg, #2d3436 0%, #1a1a2e 100%);
+            border: 2px solid;
+            border-radius: 12px;
+            padding: 20px 40px;
+            text-align: center;
+            position: relative;
+        }
+
+        .arch-box.google {
+            border-color: #4285f4;
+            box-shadow: 0 0 30px rgba(66, 133, 244, 0.3);
+        }
+
+        .arch-box.antigravity {
+            border-color: #9b59b6;
+            box-shadow: 0 0 30px rgba(155, 89, 182, 0.3);
+        }
+
+        .arch-box.provider {
+            border-color: #27ae60;
+            width: 150px;
+        }
+
+        .arch-box h3 {
+            color: #fff;
+            font-size: 1.2em;
+        }
+
+        .arch-box p {
+            color: #aaa;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .arrow {
+            width: 2px;
+            height: 30px;
+            background: linear-gradient(180deg, #00d9ff, transparent);
+            position: relative;
+        }
+
+        .arrow::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid #00d9ff;
+        }
+
+        .providers-row {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+        }
+
+        /* Flow Diagram */
+        .flow-container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            overflow-x: auto;
+            padding: 20px 0;
+        }
+
+        .flow-step {
+            flex: 0 0 200px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+        }
+
+        .flow-step::after {
+            content: '>';
+            position: absolute;
+            right: -20px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #00d9ff;
+            font-size: 1.5em;
+        }
+
+        .flow-step:last-child::after {
+            display: none;
+        }
+
+        .flow-step .step-number {
+            background: #00d9ff;
+            color: #1a1a2e;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin: 0 auto 10px;
+        }
+
+        .flow-step h4 {
+            color: #fff;
+            margin-bottom: 8px;
+        }
+
+        .flow-step p {
+            color: #aaa;
+            font-size: 0.85em;
+        }
+
+        /* Account Manager */
+        .account-manager {
+            background: #1a1a2e;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(0, 217, 255, 0.3);
+        }
+
+        .account-header {
+            background: rgba(0, 217, 255, 0.1);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .account-header h4 {
+            color: #00d9ff;
+        }
+
+        .account-list {
+            padding: 0;
+        }
+
+        .account-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            gap: 15px;
+        }
+
+        .account-item:last-child {
+            border-bottom: none;
+        }
+
+        .account-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4285f4, #34a853);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .account-info {
+            flex: 1;
+        }
+
+        .account-email {
+            color: #fff;
+            font-weight: 500;
+        }
+
+        .account-pools {
+            color: #888;
+            font-size: 0.85em;
+            margin-top: 3px;
+        }
+
+        .account-status {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .status-active {
+            background: rgba(39, 174, 96, 0.2);
+            color: #27ae60;
+            border: 1px solid rgba(39, 174, 96, 0.3);
+        }
+
+        .status-limited {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+            border: 1px solid rgba(231, 76, 60, 0.3);
+        }
+
+        /* Rate Limit Flow */
+        .rate-limit-flow {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .rl-step {
+            background: rgba(155, 89, 182, 0.1);
+            border: 1px solid rgba(155, 89, 182, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .rl-step .icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .rl-step h4 {
+            color: #9b59b6;
+            margin-bottom: 8px;
+        }
+
+        .rl-step p {
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        /* CLI Demo */
+        .cli-demo {
+            background: #0d1117;
+            border-radius: 12px;
+            padding: 20px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            overflow-x: auto;
+        }
+
+        .cli-line {
+            margin: 5px 0;
+            line-height: 1.6;
+        }
+
+        .cli-prompt {
+            color: #58a6ff;
+        }
+
+        .cli-command {
+            color: #c9d1d9;
+        }
+
+        .cli-output {
+            color: #8b949e;
+        }
+
+        .cli-success {
+            color: #3fb950;
+        }
+
+        .cli-warning {
+            color: #d29922;
+        }
+
+        /* Quota Table */
+        .quota-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .quota-table th,
+        .quota-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .quota-table th {
+            background: rgba(0, 217, 255, 0.1);
+            color: #00d9ff;
+            font-weight: 600;
+        }
+
+        .quota-table td {
+            color: #c9d1d9;
+        }
+
+        .quota-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge-antigravity {
+            background: rgba(155, 89, 182, 0.2);
+            color: #9b59b6;
+        }
+
+        .badge-gemini {
+            background: rgba(66, 133, 244, 0.2);
+            color: #4285f4;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .footer a {
+            color: #00d9ff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PRD-0036: Antigravity Multi-Account Auth</h1>
+        <p class="subtitle">Google OAuth 하나로 Claude + Gemini 접근 | Multi-Account 자동 전환</p>
+
+        <!-- Architecture -->
+        <div class="section">
+            <h2 class="section-title">통합 아키텍처</h2>
+            <div class="architecture">
+                <div class="arch-box google">
+                    <h3>Google OAuth</h3>
+                    <p>단일 인증</p>
+                </div>
+                <div class="arrow"></div>
+                <div class="arch-box antigravity">
+                    <h3>AntigravityProvider</h3>
+                    <p>Multi-AI Access Gateway</p>
+                </div>
+                <div class="arrow"></div>
+                <div class="providers-row">
+                    <div class="arch-box provider" style="border-color: #9b59b6;">
+                        <h3>Claude</h3>
+                        <p>via Antigravity</p>
+                    </div>
+                    <div class="arch-box provider" style="border-color: #4285f4;">
+                        <h3>Gemini</h3>
+                        <p>via GCP</p>
+                    </div>
+                    <div class="arch-box provider" style="border-color: #10a37f;">
+                        <h3>GPT</h3>
+                        <p>via OpenAI</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auth Flow -->
+        <div class="section">
+            <h2 class="section-title">인증 플로우</h2>
+            <div class="flow-container">
+                <div class="flow-step">
+                    <div class="step-number">1</div>
+                    <h4>Login 실행</h4>
+                    <p>ultimate-debate auth login</p>
+                </div>
+                <div class="flow-step">
+                    <div class="step-number">2</div>
+                    <h4>브라우저 OAuth</h4>
+                    <p>Google 계정 승인</p>
+                </div>
+                <div class="flow-step">
+                    <div class="step-number">3</div>
+                    <h4>Callback 수신</h4>
+                    <p>localhost:8080</p>
+                </div>
+                <div class="flow-step">
+                    <div class="step-number">4</div>
+                    <h4>Token 저장</h4>
+                    <p>accounts.json</p>
+                </div>
+                <div class="flow-step">
+                    <div class="step-number">5</div>
+                    <h4>Multi-AI 접근</h4>
+                    <p>Claude + Gemini</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Account Manager -->
+        <div class="section">
+            <h2 class="section-title">Multi-Account 관리</h2>
+            <div class="account-manager">
+                <div class="account-header">
+                    <h4>AccountManager</h4>
+                    <span style="color: #888;">3 accounts</span>
+                </div>
+                <div class="account-list">
+                    <div class="account-item">
+                        <div class="account-avatar">U1</div>
+                        <div class="account-info">
+                            <div class="account-email">user1@gmail.com</div>
+                            <div class="account-pools">antigravity, gemini-cli</div>
+                        </div>
+                        <span class="account-status status-active">Active</span>
+                    </div>
+                    <div class="account-item">
+                        <div class="account-avatar">U2</div>
+                        <div class="account-info">
+                            <div class="account-email">user2@gmail.com</div>
+                            <div class="account-pools">antigravity</div>
+                        </div>
+                        <span class="account-status status-limited">Rate Limited (2m)</span>
+                    </div>
+                    <div class="account-item">
+                        <div class="account-avatar">U3</div>
+                        <div class="account-info">
+                            <div class="account-email">user3@gmail.com</div>
+                            <div class="account-pools">antigravity, gemini-cli</div>
+                        </div>
+                        <span class="account-status status-active">Active</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rate Limit Flow -->
+        <div class="section">
+            <h2 class="section-title">Rate Limit 자동 처리</h2>
+            <div class="rate-limit-flow">
+                <div class="rl-step">
+                    <div class="icon">API</div>
+                    <h4>API 호출</h4>
+                    <p>Account 1 사용</p>
+                </div>
+                <div class="rl-step">
+                    <div class="icon">429</div>
+                    <h4>Rate Limited</h4>
+                    <p>Account 1 표시</p>
+                </div>
+                <div class="rl-step">
+                    <div class="icon">Switch</div>
+                    <h4>자동 전환</h4>
+                    <p>Account 3 선택</p>
+                </div>
+                <div class="rl-step">
+                    <div class="icon">OK</div>
+                    <h4>재시도 성공</h4>
+                    <p>무중단 처리</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quota Table -->
+        <div class="section">
+            <h2 class="section-title">지원 Quota Pool</h2>
+            <table class="quota-table">
+                <thead>
+                    <tr>
+                        <th>Quota Pool</th>
+                        <th>모델</th>
+                        <th>엔드포인트</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="quota-badge badge-antigravity">antigravity</span></td>
+                        <td>Claude Opus 4.5, Sonnet 4.5</td>
+                        <td>cloudcode-pa.sandbox.googleapis.com</td>
+                    </tr>
+                    <tr>
+                        <td><span class="quota-badge badge-antigravity">antigravity</span></td>
+                        <td>Gemini 3 Pro/Flash</td>
+                        <td>cloudcode-pa.sandbox.googleapis.com</td>
+                    </tr>
+                    <tr>
+                        <td><span class="quota-badge badge-gemini">gemini-cli</span></td>
+                        <td>Gemini 2.5 Flash/Pro</td>
+                        <td>generativelanguage.googleapis.com</td>
+                    </tr>
+                    <tr>
+                        <td><span class="quota-badge badge-gemini">gemini-cli</span></td>
+                        <td>Gemini 3 Flash/Pro</td>
+                        <td>generativelanguage.googleapis.com</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- CLI Demo -->
+        <div class="section">
+            <h2 class="section-title">CLI 인터페이스</h2>
+            <div class="cli-demo">
+                <div class="cli-line">
+                    <span class="cli-prompt">$</span>
+                    <span class="cli-command"> ultimate-debate auth login</span>
+                </div>
+                <div class="cli-line cli-output">[AUTH] 브라우저가 자동으로 열립니다...</div>
+                <div class="cli-line cli-success">[OK] 인증 성공! user1@gmail.com</div>
+                <div class="cli-line"></div>
+                <div class="cli-line">
+                    <span class="cli-prompt">$</span>
+                    <span class="cli-command"> ultimate-debate auth add-account</span>
+                </div>
+                <div class="cli-line cli-output">[AUTH] 추가 계정 등록...</div>
+                <div class="cli-line cli-success">[OK] user2@gmail.com 추가됨</div>
+                <div class="cli-line"></div>
+                <div class="cli-line">
+                    <span class="cli-prompt">$</span>
+                    <span class="cli-command"> ultimate-debate auth list</span>
+                </div>
+                <div class="cli-line cli-output">EMAIL               STATUS        QUOTA POOLS</div>
+                <div class="cli-line cli-output">user1@gmail.com     Active        antigravity, gemini-cli</div>
+                <div class="cli-line cli-warning">user2@gmail.com     Rate Limited  antigravity</div>
+                <div class="cli-line"></div>
+                <div class="cli-line">
+                    <span class="cli-prompt">$</span>
+                    <span class="cli-command"> ultimate-debate run "캐싱 전략 분석"</span>
+                </div>
+                <div class="cli-line cli-output">[DEBATE] Phase 1: Parallel Analysis...</div>
+                <div class="cli-line cli-warning">[WARN] user2 rate limited, switching to user1</div>
+                <div class="cli-line cli-success">[OK] Consensus reached: 85%</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>PRD-0036 | Ultimate Debate | <a href="https://github.com/garimto81/claude">GitHub</a></p>
+        </div>
+    </div>
+</body>
+</html>
