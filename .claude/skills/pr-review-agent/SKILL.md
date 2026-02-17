@@ -53,11 +53,11 @@ SendMessage(type="message", recipient="reviewer", content="PR 리뷰 시작.")
 ```python
 # 3개 에이전트 병렬 실행 (Agent Teams)
 TeamCreate(team_name="pr-check-session")
-Task(subagent_type="oh-my-claudecode:explore", name="quality-checker",
+Task(subagent_type="explore", name="quality-checker",
      team_name="pr-check-session", model="haiku", prompt="코드 품질 검사: lint, type, complexity")
-Task(subagent_type="oh-my-claudecode:explore", name="test-checker",
+Task(subagent_type="explore", name="test-checker",
      team_name="pr-check-session", model="haiku", prompt="테스트 검증: coverage, new tests")
-Task(subagent_type="oh-my-claudecode:explore", name="security-checker",
+Task(subagent_type="explore", name="security-checker",
      team_name="pr-check-session", model="haiku", prompt="보안 검사: secrets, vulnerabilities")
 # 완료 대기 → 각 teammate shutdown_request → TeamDelete()
 ```

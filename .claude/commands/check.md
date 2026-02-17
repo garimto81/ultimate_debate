@@ -253,11 +253,11 @@ Action: Fix npm vulnerabilities before deploy
 
 | 옵션 | 연동 에이전트 | 역할 |
 |------|--------------|------|
-| 기본 | `oh-my-claudecode:code-reviewer` | 코드 품질 리뷰 |
-| `--security` | `oh-my-claudecode:security-reviewer` | 보안 취약점 심층 분석 |
-| `--e2e` | `oh-my-claudecode:qa-tester` | E2E 테스트 실행 |
+| 기본 | `code-reviewer` | 코드 품질 리뷰 |
+| `--security` | `security-reviewer` | 보안 취약점 심층 분석 |
+| `--e2e` | `qa-tester` | E2E 테스트 실행 |
 | `--perf` | `devops-engineer` | 성능 분석 |
-| `--react` | `oh-my-claudecode:designer` | React 성능 최적화 검사 |
+| `--react` | `designer` | React 성능 최적화 검사 |
 
 ## Related
 

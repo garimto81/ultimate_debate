@@ -357,9 +357,9 @@ supabase start
 | 스킬/에이전트 | 연동 시점 |
 |---------------|----------|
 | `database-specialist` | 복잡한 쿼리 최적화 |
-| `oh-my-claudecode:executor` | API 개발 통합 |
-| `oh-my-claudecode:security-reviewer` | RLS 정책 검토 |
-| `oh-my-claudecode:designer` | 클라이언트 통합 |
+| `executor` | API 개발 통합 |
+| `security-reviewer` | RLS 정책 검토 |
+| `designer` | 클라이언트 통합 |
 
 ## 트러블슈팅
 

@@ -13,14 +13,14 @@ import asyncio
 
 class OMCSkill(Enum):
     """OMC 스킬 열거형"""
-    RALPLAN = "oh-my-claudecode:ralplan"
-    ULTRAWORK = "oh-my-claudecode:ultrawork"
-    RALPH = "oh-my-claudecode:ralph"
-    ARCHITECT = "oh-my-claudecode:architect"
-    REVIEW = "oh-my-claudecode:review"
-    BUILD_FIX = "oh-my-claudecode:build-fix"
-    AUTOPILOT = "oh-my-claudecode:autopilot"
-    ULTRAQA = "oh-my-claudecode:ultraqa"
+    RALPLAN = "ralplan"
+    ULTRAWORK = "ultrawork"
+    RALPH = "ralph"
+    ARCHITECT = "architect"
+    REVIEW = "review"
+    BUILD_FIX = "build-fix"
+    AUTOPILOT = "autopilot"
+    ULTRAQA = "ultraqa"
 
 
 class BKITSkill(Enum):
@@ -152,145 +152,145 @@ UNIFIED_AGENT_REGISTRY: Dict[str, AgentInfo] = {
     # OMC 에이전트 (32개)
     # -------------------------------------------------------------------------
     # Analysis (3)
-    "oh-my-claudecode:architect-low": AgentInfo(
-        "oh-my-claudecode:architect-low", ModelTier.HAIKU, AgentDomain.ANALYSIS,
+    "architect-low": AgentInfo(
+        "architect-low", ModelTier.HAIKU, AgentDomain.ANALYSIS,
         "omc", "간단한 구조 분석"
     ),
-    "oh-my-claudecode:architect-medium": AgentInfo(
-        "oh-my-claudecode:architect-medium", ModelTier.SONNET, AgentDomain.ANALYSIS,
+    "architect-medium": AgentInfo(
+        "architect-medium", ModelTier.SONNET, AgentDomain.ANALYSIS,
         "omc", "중간 규모 설계"
     ),
-    "oh-my-claudecode:architect": AgentInfo(
-        "oh-my-claudecode:architect", ModelTier.OPUS, AgentDomain.ANALYSIS,
+    "architect": AgentInfo(
+        "architect", ModelTier.OPUS, AgentDomain.ANALYSIS,
         "omc", "복잡한 아키텍처 분석"
     ),
     # Execution (3)
-    "oh-my-claudecode:executor-low": AgentInfo(
-        "oh-my-claudecode:executor-low", ModelTier.HAIKU, AgentDomain.EXECUTION,
+    "executor-low": AgentInfo(
+        "executor-low", ModelTier.HAIKU, AgentDomain.EXECUTION,
         "omc", "단순 코드 변경"
     ),
-    "oh-my-claudecode:executor": AgentInfo(
-        "oh-my-claudecode:executor", ModelTier.SONNET, AgentDomain.EXECUTION,
+    "executor": AgentInfo(
+        "executor", ModelTier.SONNET, AgentDomain.EXECUTION,
         "omc", "기능 구현"
     ),
-    "oh-my-claudecode:executor-high": AgentInfo(
-        "oh-my-claudecode:executor-high", ModelTier.OPUS, AgentDomain.EXECUTION,
+    "executor-high": AgentInfo(
+        "executor-high", ModelTier.OPUS, AgentDomain.EXECUTION,
         "omc", "복잡한 리팩토링"
     ),
     # Search (3)
-    "oh-my-claudecode:explore": AgentInfo(
-        "oh-my-claudecode:explore", ModelTier.HAIKU, AgentDomain.SEARCH,
+    "explore": AgentInfo(
+        "explore", ModelTier.HAIKU, AgentDomain.SEARCH,
         "omc", "기본 코드베이스 탐색"
     ),
-    "oh-my-claudecode:explore-medium": AgentInfo(
-        "oh-my-claudecode:explore-medium", ModelTier.SONNET, AgentDomain.SEARCH,
+    "explore-medium": AgentInfo(
+        "explore-medium", ModelTier.SONNET, AgentDomain.SEARCH,
         "omc", "상세 코드 탐색"
     ),
-    "oh-my-claudecode:explore-high": AgentInfo(
-        "oh-my-claudecode:explore-high", ModelTier.OPUS, AgentDomain.SEARCH,
+    "explore-high": AgentInfo(
+        "explore-high", ModelTier.OPUS, AgentDomain.SEARCH,
         "omc", "심층 코드 분석"
     ),
     # Research (2)
-    "oh-my-claudecode:researcher-low": AgentInfo(
-        "oh-my-claudecode:researcher-low", ModelTier.HAIKU, AgentDomain.RESEARCH,
+    "researcher-low": AgentInfo(
+        "researcher-low", ModelTier.HAIKU, AgentDomain.RESEARCH,
         "omc", "빠른 문서 조회"
     ),
-    "oh-my-claudecode:researcher": AgentInfo(
-        "oh-my-claudecode:researcher", ModelTier.SONNET, AgentDomain.RESEARCH,
+    "researcher": AgentInfo(
+        "researcher", ModelTier.SONNET, AgentDomain.RESEARCH,
         "omc", "리서치"
     ),
     # Frontend (3)
-    "oh-my-claudecode:designer-low": AgentInfo(
-        "oh-my-claudecode:designer-low", ModelTier.HAIKU, AgentDomain.FRONTEND,
+    "designer-low": AgentInfo(
+        "designer-low", ModelTier.HAIKU, AgentDomain.FRONTEND,
         "omc", "간단한 UI 수정"
     ),
-    "oh-my-claudecode:designer": AgentInfo(
-        "oh-my-claudecode:designer", ModelTier.SONNET, AgentDomain.FRONTEND,
+    "designer": AgentInfo(
+        "designer", ModelTier.SONNET, AgentDomain.FRONTEND,
         "omc", "UI 컴포넌트"
     ),
-    "oh-my-claudecode:designer-high": AgentInfo(
-        "oh-my-claudecode:designer-high", ModelTier.OPUS, AgentDomain.FRONTEND,
+    "designer-high": AgentInfo(
+        "designer-high", ModelTier.OPUS, AgentDomain.FRONTEND,
         "omc", "디자인 시스템"
     ),
     # Docs (1)
-    "oh-my-claudecode:writer": AgentInfo(
-        "oh-my-claudecode:writer", ModelTier.HAIKU, AgentDomain.DOCS,
+    "writer": AgentInfo(
+        "writer", ModelTier.HAIKU, AgentDomain.DOCS,
         "omc", "문서 작성"
     ),
     # Visual (1)
-    "oh-my-claudecode:vision": AgentInfo(
-        "oh-my-claudecode:vision", ModelTier.SONNET, AgentDomain.VISUAL,
+    "vision": AgentInfo(
+        "vision", ModelTier.SONNET, AgentDomain.VISUAL,
         "omc", "이미지/다이어그램 분석"
     ),
     # Planning (3)
-    "oh-my-claudecode:planner": AgentInfo(
-        "oh-my-claudecode:planner", ModelTier.OPUS, AgentDomain.PLANNING,
+    "planner": AgentInfo(
+        "planner", ModelTier.OPUS, AgentDomain.PLANNING,
         "omc", "전략적 계획"
     ),
-    "oh-my-claudecode:critic": AgentInfo(
-        "oh-my-claudecode:critic", ModelTier.OPUS, AgentDomain.PLANNING,
+    "critic": AgentInfo(
+        "critic", ModelTier.OPUS, AgentDomain.PLANNING,
         "omc", "계획 비평"
     ),
-    "oh-my-claudecode:analyst": AgentInfo(
-        "oh-my-claudecode:analyst", ModelTier.OPUS, AgentDomain.PLANNING,
+    "analyst": AgentInfo(
+        "analyst", ModelTier.OPUS, AgentDomain.PLANNING,
         "omc", "사전 분석"
     ),
     # Testing (2)
-    "oh-my-claudecode:qa-tester": AgentInfo(
-        "oh-my-claudecode:qa-tester", ModelTier.SONNET, AgentDomain.TESTING,
+    "qa-tester": AgentInfo(
+        "qa-tester", ModelTier.SONNET, AgentDomain.TESTING,
         "omc", "테스트 실행"
     ),
-    "oh-my-claudecode:qa-tester-high": AgentInfo(
-        "oh-my-claudecode:qa-tester-high", ModelTier.OPUS, AgentDomain.TESTING,
+    "qa-tester-high": AgentInfo(
+        "qa-tester-high", ModelTier.OPUS, AgentDomain.TESTING,
         "omc", "복잡한 테스트"
     ),
     # Security (2)
-    "oh-my-claudecode:security-reviewer-low": AgentInfo(
-        "oh-my-claudecode:security-reviewer-low", ModelTier.HAIKU, AgentDomain.SECURITY,
+    "security-reviewer-low": AgentInfo(
+        "security-reviewer-low", ModelTier.HAIKU, AgentDomain.SECURITY,
         "omc", "빠른 보안 스캔"
     ),
-    "oh-my-claudecode:security-reviewer": AgentInfo(
-        "oh-my-claudecode:security-reviewer", ModelTier.OPUS, AgentDomain.SECURITY,
+    "security-reviewer": AgentInfo(
+        "security-reviewer", ModelTier.OPUS, AgentDomain.SECURITY,
         "omc", "심층 보안 분석"
     ),
     # Build (2)
-    "oh-my-claudecode:build-fixer-low": AgentInfo(
-        "oh-my-claudecode:build-fixer-low", ModelTier.HAIKU, AgentDomain.BUILD,
+    "build-fixer-low": AgentInfo(
+        "build-fixer-low", ModelTier.HAIKU, AgentDomain.BUILD,
         "omc", "단순 빌드 오류"
     ),
-    "oh-my-claudecode:build-fixer": AgentInfo(
-        "oh-my-claudecode:build-fixer", ModelTier.SONNET, AgentDomain.BUILD,
+    "build-fixer": AgentInfo(
+        "build-fixer", ModelTier.SONNET, AgentDomain.BUILD,
         "omc", "빌드 오류 수정"
     ),
     # TDD (2)
-    "oh-my-claudecode:tdd-guide-low": AgentInfo(
-        "oh-my-claudecode:tdd-guide-low", ModelTier.HAIKU, AgentDomain.TDD,
+    "tdd-guide-low": AgentInfo(
+        "tdd-guide-low", ModelTier.HAIKU, AgentDomain.TDD,
         "omc", "기본 테스트 제안"
     ),
-    "oh-my-claudecode:tdd-guide": AgentInfo(
-        "oh-my-claudecode:tdd-guide", ModelTier.SONNET, AgentDomain.TDD,
+    "tdd-guide": AgentInfo(
+        "tdd-guide", ModelTier.SONNET, AgentDomain.TDD,
         "omc", "TDD 워크플로우"
     ),
     # Review (2)
-    "oh-my-claudecode:code-reviewer-low": AgentInfo(
-        "oh-my-claudecode:code-reviewer-low", ModelTier.HAIKU, AgentDomain.REVIEW,
+    "code-reviewer-low": AgentInfo(
+        "code-reviewer-low", ModelTier.HAIKU, AgentDomain.REVIEW,
         "omc", "빠른 코드 검토"
     ),
-    "oh-my-claudecode:code-reviewer": AgentInfo(
-        "oh-my-claudecode:code-reviewer", ModelTier.OPUS, AgentDomain.REVIEW,
+    "code-reviewer": AgentInfo(
+        "code-reviewer", ModelTier.OPUS, AgentDomain.REVIEW,
         "omc", "상세 코드 리뷰"
     ),
     # Data (3)
-    "oh-my-claudecode:scientist-low": AgentInfo(
-        "oh-my-claudecode:scientist-low", ModelTier.HAIKU, AgentDomain.DATA,
+    "scientist-low": AgentInfo(
+        "scientist-low", ModelTier.HAIKU, AgentDomain.DATA,
         "omc", "간단한 데이터 확인"
     ),
-    "oh-my-claudecode:scientist": AgentInfo(
-        "oh-my-claudecode:scientist", ModelTier.SONNET, AgentDomain.DATA,
+    "scientist": AgentInfo(
+        "scientist", ModelTier.SONNET, AgentDomain.DATA,
         "omc", "데이터 분석"
     ),
-    "oh-my-claudecode:scientist-high": AgentInfo(
-        "oh-my-claudecode:scientist-high", ModelTier.OPUS, AgentDomain.DATA,
+    "scientist-high": AgentInfo(
+        "scientist-high", ModelTier.OPUS, AgentDomain.DATA,
         "omc", "ML/통계 분석"
     ),
 
@@ -351,27 +351,27 @@ UNIFIED_AGENT_REGISTRY: Dict[str, AgentInfo] = {
 DOMAIN_AGENT_PAIRS: Dict[AgentDomain, Dict[str, List[str]]] = {
     # 코드 리뷰: OMC code-reviewer vs BKIT code-analyzer
     AgentDomain.REVIEW: {
-        "omc": ["oh-my-claudecode:code-reviewer", "oh-my-claudecode:code-reviewer-low"],
+        "omc": ["code-reviewer", "code-reviewer-low"],
         "bkit": ["bkit:code-analyzer"],
     },
     # 테스트/QA: OMC qa-tester vs BKIT qa-monitor
     AgentDomain.TESTING: {
-        "omc": ["oh-my-claudecode:qa-tester", "oh-my-claudecode:qa-tester-high"],
+        "omc": ["qa-tester", "qa-tester-high"],
         "bkit": ["bkit:qa-monitor"],
     },
     # 검증: OMC architect vs BKIT gap-detector
     AgentDomain.VERIFICATION: {
-        "omc": ["oh-my-claudecode:architect"],
+        "omc": ["architect"],
         "bkit": ["bkit:gap-detector", "bkit:design-validator"],
     },
     # 문서: OMC writer vs BKIT report-generator
     AgentDomain.DOCS: {
-        "omc": ["oh-my-claudecode:writer"],
+        "omc": ["writer"],
         "bkit": ["bkit:report-generator"],
     },
     # 분석: OMC architect vs BKIT enterprise-expert
     AgentDomain.ANALYSIS: {
-        "omc": ["oh-my-claudecode:architect", "oh-my-claudecode:architect-medium", "oh-my-claudecode:architect-low"],
+        "omc": ["architect", "architect-medium", "architect-low"],
         "bkit": ["bkit:enterprise-expert", "bkit:infra-architect"],
     },
 }
@@ -379,17 +379,17 @@ DOMAIN_AGENT_PAIRS: Dict[AgentDomain, Dict[str, List[str]]] = {
 
 # BKIT 에이전트 -> OMC 폴백 매핑
 BKIT_TO_OMC_FALLBACK: Dict[str, str] = {
-    "bkit:gap-detector": "oh-my-claudecode:architect",
-    "bkit:design-validator": "oh-my-claudecode:architect-medium",
-    "bkit:code-analyzer": "oh-my-claudecode:code-reviewer",
-    "bkit:qa-monitor": "oh-my-claudecode:qa-tester",
-    "bkit:pdca-iterator": "oh-my-claudecode:executor",
-    "bkit:report-generator": "oh-my-claudecode:writer",
-    "bkit:starter-guide": "oh-my-claudecode:writer",
-    "bkit:bkend-expert": "oh-my-claudecode:architect-medium",
-    "bkit:enterprise-expert": "oh-my-claudecode:architect",
-    "bkit:infra-architect": "oh-my-claudecode:architect",
-    "bkit:pipeline-guide": "oh-my-claudecode:executor",
+    "bkit:gap-detector": "architect",
+    "bkit:design-validator": "architect-medium",
+    "bkit:code-analyzer": "code-reviewer",
+    "bkit:qa-monitor": "qa-tester",
+    "bkit:pdca-iterator": "executor",
+    "bkit:report-generator": "writer",
+    "bkit:starter-guide": "writer",
+    "bkit:bkend-expert": "architect-medium",
+    "bkit:enterprise-expert": "architect",
+    "bkit:infra-architect": "architect",
+    "bkit:pipeline-guide": "executor",
 }
 
 
@@ -493,14 +493,14 @@ class OMCBridge:
     # -------------------------------------------------------------------------
 
     COMMAND_AGENT_MAP: Dict[str, Tuple[str, ModelTier]] = {
-        "/debug": ("oh-my-claudecode:architect", ModelTier.OPUS),
-        "/check --fix": ("oh-my-claudecode:build-fixer", ModelTier.SONNET),
-        "/check --security": ("oh-my-claudecode:security-reviewer", ModelTier.OPUS),
-        "/issue fix": ("oh-my-claudecode:executor", ModelTier.SONNET),
-        "/pr auto": ("oh-my-claudecode:code-reviewer", ModelTier.OPUS),
-        "/tdd": ("oh-my-claudecode:tdd-guide", ModelTier.SONNET),
-        "/research": ("oh-my-claudecode:researcher", ModelTier.SONNET),
-        "/audit quick": ("oh-my-claudecode:explore", ModelTier.HAIKU),
+        "/debug": ("architect", ModelTier.OPUS),
+        "/check --fix": ("build-fixer", ModelTier.SONNET),
+        "/check --security": ("security-reviewer", ModelTier.OPUS),
+        "/issue fix": ("executor", ModelTier.SONNET),
+        "/pr auto": ("code-reviewer", ModelTier.OPUS),
+        "/tdd": ("tdd-guide", ModelTier.SONNET),
+        "/research": ("researcher", ModelTier.SONNET),
+        "/audit quick": ("explore", ModelTier.HAIKU),
         # BKIT 스킬 (bkit:pdca 플러그인 경유, 로컬 커맨드 파일 없음)
         "/pdca analyze": ("bkit:gap-detector", ModelTier.OPUS),
         "/pdca iterate": ("bkit:pdca-iterator", ModelTier.SONNET),
@@ -556,7 +556,7 @@ SendMessage(type="message", recipient="{agent_config.name}",
 
     def resolve_agent_for_pdca_check(self, use_bkit: bool = True) -> Tuple[str, str]:
         """PDCA Check 단계용 에이전트 결정 (이중 검증)"""
-        primary = "oh-my-claudecode:architect"
+        primary = "architect"
 
         if use_bkit:
             secondary_agent, _, did_fallback = self.get_agent_with_fallback("bkit:gap-detector")
@@ -582,7 +582,7 @@ SendMessage(type="message", recipient="{agent_config.name}",
 
 # 1. OMC Architect 검증 (기능적 완성도) - 순차 teammate
 Task(
-    subagent_type="oh-my-claudecode:architect",
+    subagent_type="architect",
     name="verifier",
     team_name="{team_name}",
     model="opus",
@@ -762,8 +762,8 @@ if __name__ == "__main__":
     # OMC 에이전트 정상 조회
     print("\n=== OMC 에이전트 정상 조회 ===")
     test_omc_agents = [
-        "oh-my-claudecode:architect",
-        "oh-my-claudecode:executor",
+        "architect",
+        "executor",
     ]
     for omc_agent in test_omc_agents:
         actual_agent, agent_info, did_fallback = bridge.get_agent_with_fallback(omc_agent)

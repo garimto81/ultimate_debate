@@ -2,10 +2,6 @@
 name: tdd
 description: Guide Test-Driven Development with Red-Green-Refactor discipline
 version: 2.0.0
-omc_delegate: oh-my-claudecode:tdd
-omc_agents:
-  - tdd-guide
-  - tdd-guide-low
 triggers:
   keywords:
     - "tdd"
@@ -17,25 +13,18 @@ triggers:
 
 # /tdd - Test-Driven Development
 
-## OMC Integration
+## 실행 방법
 
-이 스킬은 OMC `tdd` 스킬에 위임합니다.
-
-### 실행 방법
-
-```python
-Skill(skill="oh-my-claudecode:tdd", args="feature-name")
-
-# 또는 Agent Teams 직접 호출
+```
 TeamCreate(team_name="tdd-session")
-Task(subagent_type="oh-my-claudecode:tdd-guide", name="tdd-runner",
+Task(subagent_type="tdd-guide", name="tdd-runner",
      team_name="tdd-session", model="sonnet",
      prompt="TDD 워크플로우 실행: [기능 설명]")
 SendMessage(type="message", recipient="tdd-runner", content="TDD 시작.")
 # 완료 대기 → shutdown_request → TeamDelete()
 ```
 
-### OMC 에이전트
+### 에이전트
 
 | 에이전트 | 모델 | 용도 |
 |----------|------|------|

@@ -367,7 +367,7 @@ vercel deploy --prebuilt --prod
 |---------------|----------|
 | `supabase-integration` | 백엔드 API 연결 |
 | `github-engineer` | CI/CD 파이프라인 |
-| `oh-my-claudecode:designer` | 프론트엔드 빌드 |
+| `designer` | 프론트엔드 빌드 |
 | `devops-engineer` | 인프라 설정 |
 
 ## 트러블슈팅

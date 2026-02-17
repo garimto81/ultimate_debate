@@ -161,9 +161,9 @@ python -m lib.google_docs drive organize
 
 | 에이전트 | 역할 | 사용 시점 |
 |----------|------|----------|
-| `oh-my-claudecode:analyst` | 파일 목록 의미 분석 | Step 2 |
-| `oh-my-claudecode:architect` | 폴더 구조 설계 | Step 3 |
-| `oh-my-claudecode:executor` | 정리 작업 실행 | Step 4 |
+| `analyst` | 파일 목록 의미 분석 | Step 2 |
+| `architect` | 폴더 구조 설계 | Step 3 |
+| `executor` | 정리 작업 실행 | Step 4 |
 
 ---
 

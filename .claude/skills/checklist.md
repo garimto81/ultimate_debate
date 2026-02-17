@@ -52,7 +52,7 @@
 ## 📋 Checklist: {project}
 
 ### 🔄 In Progress
-- [TASK-001] 작업 제목 (oh-my-claudecode:executor)
+- [TASK-001] 작업 제목 (executor)
 
 ### 📝 Pending (3)
 - [TASK-002] 다음 작업 (high)
@@ -119,20 +119,20 @@ Total: 9 | Done: 5 | Progress: 1 | Pending: 3
 
 **예시:**
 ```
-/checklist assign TASK-001 oh-my-claudecode:executor
-/checklist assign TASK-002 oh-my-claudecode:qa-tester
+/checklist assign TASK-001 executor
+/checklist assign TASK-002 qa-tester
 ```
 
 **에이전트 매핑:**
 | 키워드 | 에이전트 |
 |--------|----------|
-| python | oh-my-claudecode:executor |
-| ts, typescript | oh-my-claudecode:executor |
-| test | oh-my-claudecode:qa-tester |
-| review | oh-my-claudecode:code-reviewer |
-| docs | oh-my-claudecode:writer |
-| debug | oh-my-claudecode:architect |
-| security | oh-my-claudecode:security-reviewer |
+| python | executor |
+| ts, typescript | executor |
+| test | qa-tester |
+| review | code-reviewer |
+| docs | writer |
+| debug | architect |
+| security | security-reviewer |
 | db, database | database-specialist |
 
 ---
@@ -174,7 +174,7 @@ current_task:
   id: "TASK-001"
   title: "작업 제목"
   status: "in_progress"
-  agent: "oh-my-claudecode:executor"
+  agent: "executor"
 
 pending:
   - id: "TASK-002"
@@ -184,14 +184,14 @@ pending:
 completed:
   - id: "TASK-000"
     title: "완료 작업"
-    agent: "oh-my-claudecode:executor"
+    agent: "executor"
     result:
       success: true
       files_changed: ["src/main.py"]
 
 agent_logs:
   - timestamp: "2025-12-19T15:00:00"
-    agent: "oh-my-claudecode:executor"
+    agent: "executor"
     task_id: "TASK-001"
     action: "작업 완료"
     status: "success"

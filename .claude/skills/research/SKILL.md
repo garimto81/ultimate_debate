@@ -2,12 +2,6 @@
 name: research
 description: RPI Phase 1 - 코드베이스 분석, 리서치, AI 리뷰
 version: 2.0.0
-omc_delegate: oh-my-claudecode:research
-omc_agents:
-  - researcher
-  - researcher-low
-  - scientist
-  - explore
 triggers:
   keywords:
     - "research"
@@ -18,25 +12,18 @@ triggers:
 
 # /research - 통합 리서치 커맨드
 
-## OMC Integration
+## 실행 방법
 
-이 스킬은 OMC `research` 스킬에 위임합니다.
-
-### 실행 방법
-
-```python
-Skill(skill="oh-my-claudecode:research", args="리서치 주제")
-
-# 또는 Agent Teams 직접 호출
+```
 TeamCreate(team_name="research-session")
-Task(subagent_type="oh-my-claudecode:researcher", name="researcher",
+Task(subagent_type="researcher", name="researcher",
      team_name="research-session", model="sonnet",
      prompt="리서치: [주제]")
 SendMessage(type="message", recipient="researcher", content="리서치 시작.")
 # 완료 대기 → shutdown_request → TeamDelete()
 ```
 
-### OMC 에이전트
+### 에이전트
 
 | 에이전트 | 모델 | 용도 |
 |----------|------|------|

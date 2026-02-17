@@ -155,7 +155,7 @@ Read(f"apps/web/{block_folder}/AGENT_RULES.md")
 ```python
 TeamCreate(team_name="wsoptv-{domain}")
 Task(
-    subagent_type="oh-my-claudecode:explore", name="arch-analyst",
+    subagent_type="explore", name="arch-analyst",
     team_name="wsoptv-{domain}", model="haiku",
     prompt="""
     작업 지시: {instruction}
@@ -192,7 +192,7 @@ Task(
 
 ```python
 Task(
-    subagent_type="oh-my-claudecode:explore", name="code-analyst",
+    subagent_type="explore", name="code-analyst",
     team_name="wsoptv-{domain}", model="haiku",
     prompt="""
     작업 지시: {instruction}

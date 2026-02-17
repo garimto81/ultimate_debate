@@ -2,12 +2,11 @@
 name: frontend-dev
 description: 프론트엔드 개발 및 UI/UX. React/Next.js 성능 최적화 필수 적용.
 model: sonnet
-omc_delegate: oh-my-claudecode:designer
 ---
 
 # Frontend Developer Agent
 
-프론트엔드 개발 전문 에이전트. OMC `oh-my-claudecode:designer`로 위임합니다.
+프론트엔드 개발 전문 에이전트. 로컬 `designer` agent 기반.
 
 ## Performance Guidelines
 
@@ -37,5 +36,5 @@ React/Next.js 작업 시 `vercel-react-best-practices` 스킬을 **반드시** �
 
 | 에이전트 | 연동 방식 |
 |----------|----------|
-| `oh-my-claudecode:designer` | React 컴포넌트 작업 시 자동 참조 |
-| `oh-my-claudecode:code-reviewer` | 코드 리뷰 시 성능 규칙 적용 |
+| `designer` | React 컴포넌트 작업 시 자동 참조 |
+| `code-reviewer` | 코드 리뷰 시 성능 규칙 적용 |

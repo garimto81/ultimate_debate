@@ -42,8 +42,8 @@ model_preference: sonnet
 phase: [2, 4]
 auto_trigger: true
 dependencies:
-  - oh-my-claudecode:designer
-  - oh-my-claudecode:code-reviewer
+  - designer
+  - code-reviewer
 token_budget: 2000
 ---
 
@@ -157,8 +157,8 @@ setItems(curr => [...curr, newItem])
 
 | 에이전트 | 연동 내용 |
 |----------|----------|
-| `oh-my-claudecode:designer` | React 컴포넌트 작업 시 자동 참조 |
-| `oh-my-claudecode:code-reviewer` | 코드 리뷰 시 성능 규칙 적용 |
+| `designer` | React 컴포넌트 작업 시 자동 참조 |
+| `code-reviewer` | 코드 리뷰 시 성능 규칙 적용 |
 
 ---
 

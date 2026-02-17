@@ -2,12 +2,6 @@
 name: parallel
 description: Multi-agent parallel execution (dev, test, review, research)
 version: 2.0.0
-omc_delegate: oh-my-claudecode:ultrawork
-omc_agents:
-  - executor
-  - executor-high
-  - qa-tester
-  - oh-my-claudecode:architect
 triggers:
   keywords:
     - "parallel"
@@ -18,34 +12,27 @@ triggers:
 
 # /parallel - 병렬 멀티에이전트 실행
 
-## OMC Integration
+## 실행 방법
 
-이 스킬은 OMC `ultrawork` 스킬에 위임합니다.
-
-### 실행 방법
-
-```python
-Skill(skill="oh-my-claudecode:ultrawork", args="작업 설명")
-
-# 또는 Agent Teams 직접 호출 (병렬)
+```
 TeamCreate(team_name="parallel-session")
-Task(subagent_type="oh-my-claudecode:executor", name="worker-1",
+Task(subagent_type="executor", name="worker-1",
      team_name="parallel-session", model="sonnet", prompt="작업 1")
-Task(subagent_type="oh-my-claudecode:executor", name="worker-2",
+Task(subagent_type="executor", name="worker-2",
      team_name="parallel-session", model="sonnet", prompt="작업 2")
 SendMessage(type="message", recipient="worker-1", content="Task 할당.")
 SendMessage(type="message", recipient="worker-2", content="Task 할당.")
 # 완료 대기 → shutdown_request → TeamDelete()
 ```
 
-### OMC 에이전트
+### 에이전트
 
 | 에이전트 | 모델 | 용도 |
 |----------|------|------|
 | `executor` | sonnet | 일반 구현 작업 |
 | `executor-high` | opus | 복잡한 구현 |
 | `qa-tester` | sonnet | 테스트 작업 |
-| `oh-my-claudecode:architect` | opus | 아키텍처 분석 |
+| `architect` | opus | 아키텍처 분석 |
 
 ## 서브커맨드 (100% 보존)
 

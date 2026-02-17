@@ -2,7 +2,6 @@
 name: debug
 description: 가설-검증 기반 디버깅
 version: 2.0.0
-omc_delegate: oh-my-claudecode:analyze
 triggers:
   keywords:
     - "debug"
@@ -12,18 +11,11 @@ triggers:
 
 # /debug - 체계적 디버깅
 
-## OMC Integration
+## 실행 방법
 
-이 스킬은 OMC `analyze` 스킬에 위임합니다.
-
-### 실행 방법
-
-```python
-Skill(skill="oh-my-claudecode:analyze", args="문제 분석")
-
-# 또는 Agent Teams 직접 호출
+```
 TeamCreate(team_name="debug-session")
-Task(subagent_type="oh-my-claudecode:architect", name="debugger",
+Task(subagent_type="architect", name="debugger",
      team_name="debug-session", model="opus",
      prompt="문제 원인 분석: [에러 내용]")
 SendMessage(type="message", recipient="debugger", content="디버깅 시작.")

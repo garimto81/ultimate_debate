@@ -30,8 +30,8 @@ model_preference: sonnet
 phase: [5]
 auto_trigger: true
 dependencies:
-  - oh-my-claudecode:qa-tester
-  - oh-my-claudecode:security-reviewer
+  - qa-tester
+  - security-reviewer
 token_budget: 2000
 ---
 
@@ -230,8 +230,8 @@ pytest --benchmark-only
 | 단계 | 에이전트 |
 |------|----------|
 | E2E 테스트 | `playwright-engineer` |
-| 보안 스캔 | `oh-my-claudecode:security-reviewer` |
-| 코드 리뷰 | `oh-my-claudecode:code-reviewer` |
+| 보안 스캔 | `security-reviewer` |
+| 코드 리뷰 | `code-reviewer` |
 | 성능 체크 | `performance-engineer` |
 
 ### 병렬 실행
@@ -239,11 +239,11 @@ pytest --benchmark-only
 ```python
 # Phase 5 병렬 검증 (Agent Teams)
 TeamCreate(team_name="final-check-session")
-Task(subagent_type="oh-my-claudecode:qa-tester", name="e2e-tester",
+Task(subagent_type="qa-tester", name="e2e-tester",
      team_name="final-check-session", model="sonnet", prompt="E2E 최종 검증")
-Task(subagent_type="oh-my-claudecode:security-reviewer", name="security-auditor",
+Task(subagent_type="security-reviewer", name="security-auditor",
      team_name="final-check-session", model="sonnet", prompt="보안 점검")
-Task(subagent_type="oh-my-claudecode:qa-tester", name="perf-tester",
+Task(subagent_type="qa-tester", name="perf-tester",
      team_name="final-check-session", model="sonnet", prompt="성능 테스트")
 # 완료 대기 → 각 teammate shutdown_request → TeamDelete()
 ```

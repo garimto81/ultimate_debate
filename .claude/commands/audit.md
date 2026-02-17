@@ -438,7 +438,7 @@ Gmail 임시보관함의 Claude Code 브리핑 메일을 분석하여 현재 워
     ├─ [3/5] 트렌드 추출 + 현재 워크플로우 비교
     │       ├─ Analyst 에이전트로 메일 본문 분석
     │       │   └─ TeamCreate("audit-trend") → Task(name="analyst", team_name="audit-trend",
-    │       │          subagent_type="oh-my-claudecode:analyst", model="opus") → TeamDelete()
+    │       │          subagent_type="analyst", model="opus") → TeamDelete()
     │       │
     │       ├─ 현재 워크플로우 인벤토리 수집
     │       │   ├─ 커맨드: .claude/commands/*.md 목록
@@ -549,7 +549,7 @@ Gmail 임시보관함의 Claude Code 브리핑 메일을 분석하여 현재 워
     │       ├─ 제안 중 복잡도 LOW/MEDIUM만 자동 적용 (HIGH는 별도 세션 안내)
     │       ├─ 각 제안별 executor 에이전트 위임
     │       │   └─ TeamCreate("audit-apply") → Task(name="applier", team_name="audit-apply",
-    │       │          subagent_type="oh-my-claudecode:executor", model="sonnet",
+    │       │          subagent_type="executor", model="sonnet",
     │       │          prompt="<제안 내용을 기반으로 파일 수정>") → TeamDelete()
     │       ├─ 적용 완료 후 변경 파일 확인
     │       │   └─ git diff --stat

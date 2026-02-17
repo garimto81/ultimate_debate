@@ -132,9 +132,9 @@ Follow TDD best practices with Red-Green-Refactor workflow and git integration.
 
 ## Integration with Agents
 
-- **oh-my-claudecode:qa-tester**: Generate test suggestions
-- **oh-my-claudecode:architect**: Fix failing tests
-- **oh-my-claudecode:code-reviewer**: Review refactoring
+- **qa-tester**: Generate test suggestions
+- **architect**: Fix failing tests
+- **code-reviewer**: Review refactoring
 
 ## Related
 

@@ -12,12 +12,6 @@ triggers:
     - "team research"
 model_preference: sonnet
 auto_trigger: true
-omc_delegate: oh-my-claudecode:ultrawork
-omc_agents:
-  - executor
-  - executor-high
-  - oh-my-claudecode:architect
-  - planner
 ---
 
 # Agent Teamworks - Multi-Agent Team Workflow
@@ -61,7 +55,7 @@ result = Coordinator.run_single_team("{팀명}", "작업 설명")
 또는 Agent Teams로 위임:
 ```
 TeamCreate(team_name="teamwork-{팀명}")
-Task(subagent_type="oh-my-claudecode:executor", name="team-runner",
+Task(subagent_type="executor", name="team-runner",
      team_name="teamwork-{팀명}", model="sonnet",
      prompt="src/agents/teams/{팀명}_team.py의 {팀}Team을 실행하세요.
      태스크: {작업 설명}")

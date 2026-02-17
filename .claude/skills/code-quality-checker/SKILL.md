@@ -37,8 +37,8 @@ model_preference: haiku
 phase: [2, 2.5]
 auto_trigger: true
 dependencies:
-  - oh-my-claudecode:code-reviewer
-  - oh-my-claudecode:security-reviewer
+  - code-reviewer
+  - security-reviewer
   - vercel-react-best-practices
 token_budget: 1400
 ---
@@ -245,8 +245,8 @@ python scripts/run_quality_check.py --react
 | 도구 | 용도 |
 |------|------|
 | `scripts/run_quality_check.py` | 통합 검사 |
-| `oh-my-claudecode:code-reviewer` 에이전트 | 코드 리뷰 |
-| `oh-my-claudecode:security-reviewer` 에이전트 | 보안 검사 |
+| `code-reviewer` 에이전트 | 코드 리뷰 |
+| `security-reviewer` 에이전트 | 보안 검사 |
 | `vercel-react-best-practices` 스킬 | React 성능 검사 |
 | `/check` | 통합 검증 커맨드 |
 
