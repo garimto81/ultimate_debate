@@ -21,6 +21,8 @@ ruff check C:\claude\ultimate-debate\src\ --fix
 pytest C:\claude\ultimate-debate\tests\test_engine.py -v
 pytest C:\claude\ultimate-debate\tests\test_auth\test_token_store.py -v
 pytest C:\claude\ultimate-debate\tests\test_engine.py::test_debate_run -v
+
+# ruff 규칙: E, F, I, N, W, UP, B, C4, SIM (line-length=88, target=py312)
 ```
 
 ## 아키텍처
@@ -63,10 +65,17 @@ Phase 5: Final Strategy       → FINAL.md 생성
 | `consensus/protocol.py` | SHA-256 해시 기반 합의 체커, ConsensusResult dataclass |
 | `consensus/tracker.py` | 수렴 추적기 (CONVERGING/DIVERGING/STABLE 트렌드) |
 | `comparison/semantic.py` | TF-IDF cosine similarity 비교 |
+| `comparison/structural.py` | 구조 정렬 비교 (placeholder, AST/DOM 확장 예정) |
 | `comparison/hash.py` | SHA-256 해시 비교 |
 | `storage/context_manager.py` | MD 파일 기반 토론 결과 저장 |
 | `storage/chunker.py` | LoadLevel 기반 점진적 로딩 (METADATA→SUMMARY→CONCLUSION→FULL) |
 | `strategies/base.py` | 전략 패턴 인터페이스 (Normal만 구현, 나머지 stub) |
+
+### Public API (`__init__.py`)
+
+```python
+from ultimate_debate import UltimateDebate, BaseAIClient, ConsensusResult
+```
 
 ### AI 클라이언트 인터페이스 (BaseAIClient)
 
@@ -161,13 +170,19 @@ AuthenticationError
 | 파일 | 범위 |
 |------|------|
 | `tests/test_engine.py` | 엔진 통합 (mock debate, claude self, consensus, 3AI) |
+| `tests/test_claude_client.py` | Claude 클라이언트 등록 차단 검증 |
 | `tests/test_auth/test_providers.py` | OpenAI/Google OAuth 플로우 |
+| `tests/test_auth/test_openai_provider.py` | OpenAI provider 단위 테스트 |
+| `tests/test_auth/test_openai_client.py` | OpenAI 클라이언트 API 호출 |
 | `tests/test_auth/test_token_store.py` | keyring + 파일 fallback |
 | `tests/test_auth/test_browser_oauth.py` | PKCE + authorization code |
 | `tests/test_auth/test_device_code.py` | RFC 8628 device code |
 | `tests/test_auth/test_gemini_cli_token.py` | Gemini CLI 토큰 재사용 |
+| `tests/test_auth/test_claude_token.py` | Claude 토큰 처리 |
 | `tests/test_auth/test_concurrent_auth.py` | 병렬 인증 처리 |
-| `tests/test_auth/test_retry_*.py` | 재시도 로직 |
+| `tests/test_auth/test_exceptions.py` | 예외 계층 검증 |
+| `tests/test_auth/test_retry_simple.py` | 단순 재시도 로직 |
+| `tests/test_auth/test_retry_loop.py` | 반복 재시도 루프 |
 
 ## 주요 패턴
 
