@@ -12,9 +12,9 @@ import uuid
 from typing import Any
 
 import httpx
-
 from ai_auth import AuthToken, RetryLimitExceededError, TokenStore
 from ai_auth.providers import OpenAIProvider
+
 from ultimate_debate.clients.base import BaseAIClient
 
 logger = logging.getLogger(__name__)
@@ -24,16 +24,19 @@ class OpenAIClient(BaseAIClient):
     """OpenAI GPT 클라이언트
 
     ChatGPT Plus/Pro 구독자 전용.
-    Browser OAuth로 인증하여 GPT-4/GPT-5 모델 접근.
+    Browser OAuth로 인증하여 Codex 전용 모델 접근.
+    로그인 시 Codex API를 프로빙하여 사용 가능한 최고 성능 모델을 자동 선택합니다.
+
+    중요: ChatGPT 계정은 표준 모델명(o3, gpt-4o 등)이 아닌
+    Codex 전용 모델명(gpt-5.3-codex 등)만 사용 가능합니다.
 
     Codex CLI 호환 엔드포인트 사용:
     - chatgpt.com/backend-api/codex/responses (구독 기반)
-    - api.openai.com/v1 (API 키 기반, fallback)
 
     Example:
-        client = OpenAIClient(model_name="gpt-5.2-codex")
-        await client.ensure_authenticated()
-        result = await client.analyze("코드 리뷰 요청", context)
+        client = OpenAIClient()
+        await client.ensure_authenticated()  # 프로빙 후 최고 모델 선택
+        print(client.model_name)  # e.g. "gpt-5.3-codex"
     """
 
     # Codex CLI 호환 엔드포인트 (ChatGPT Plus/Pro 구독 기반)
@@ -49,8 +52,20 @@ class OpenAIClient(BaseAIClient):
         "Be precise and thorough in your analysis."
     )
 
+    # Codex 전용 모델 랭킹 (높을수록 우수)
+    # ChatGPT Plus/Pro 계정은 Codex 전용 모델명만 사용 가능
+    # 표준 모델명(o3, gpt-4o 등)은 Codex API에서 차단됨
+    MODEL_CAPABILITY_RANKINGS: dict[str, int] = {
+        "gpt-5.3-codex": 100,
+        "gpt-5.2-codex": 90,
+        "gpt-5.1-codex": 80,
+        "gpt-5-codex": 75,
+    }
+
     def __init__(
-        self, model_name: str = "gpt-5.2-codex", token_store: TokenStore | None = None
+        self,
+        model_name: str = "gpt-5.3-codex",
+        token_store: TokenStore | None = None,
     ):
         super().__init__(model_name)
         self.token_store = token_store or TokenStore()
@@ -59,8 +74,14 @@ class OpenAIClient(BaseAIClient):
         self._auth_retry_count = 0  # 재인증 재시도 카운터
         self._max_auth_retries = 1  # 최대 재시도 횟수
 
+        # 모델 발견 결과
+        self.discovered_models: list[str] = []
+
     async def ensure_authenticated(self) -> bool:
-        """인증 상태 확인 및 필요시 로그인
+        """인증 상태 확인 및 필요시 로그인 + 최적 모델 자동 선택.
+
+        인증 완료 후 Codex API를 프로빙하여
+        사용 가능한 최고 성능 모델을 자동 선택합니다.
 
         Returns:
             bool: 인증 성공 여부
@@ -71,6 +92,7 @@ class OpenAIClient(BaseAIClient):
         if self._token:
             # 토큰 유효성 확인
             if not self._token.is_expired():
+                await self._auto_select_best_model()
                 return True
 
             # 만료된 경우 갱신 시도
@@ -78,6 +100,7 @@ class OpenAIClient(BaseAIClient):
                 try:
                     self._token = await self.provider.refresh(self._token)
                     await self.token_store.save(self._token)
+                    await self._auto_select_best_model()
                     return True
                 except ValueError:
                     pass  # 갱신 실패, 재로그인 필요
@@ -85,7 +108,85 @@ class OpenAIClient(BaseAIClient):
         # 새 로그인
         self._token = await self.provider.login()
         await self.token_store.save(self._token)
+        await self._auto_select_best_model()
         return True
+
+    async def _auto_select_best_model(self) -> None:
+        """Codex API를 프로빙하여 최고 성능 모델 자동 선택."""
+        self.discovered_models = await self._discover_models()
+        if self.discovered_models:
+            best = self._select_best_model(self.discovered_models)
+            if best != self.model_name:
+                logger.info(f"Model auto-selected: {self.model_name} -> {best}")
+                self.model_name = best
+
+    async def _discover_models(self) -> list[str]:
+        """Codex API를 프로빙하여 사용 가능한 모델 목록 발견.
+
+        랭킹 순으로 후보 모델에 최소 요청을 보내 가용성을 확인합니다.
+        첫 번째 성공 모델을 찾으면 즉시 반환합니다 (최고 성능 우선).
+
+        Returns:
+            사용 가능한 모델 이름 리스트
+        """
+        available = []
+        candidates = sorted(
+            self.MODEL_CAPABILITY_RANKINGS.keys(),
+            key=lambda m: self.MODEL_CAPABILITY_RANKINGS[m],
+            reverse=True,
+        )
+
+        for model_name in candidates:
+            try:
+                payload = {
+                    "model": model_name,
+                    "instructions": "test",
+                    "input": [{"role": "user", "content": "hi"}],
+                    "stream": True,
+                    "store": False,
+                }
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(
+                        f"{self.CODEX_API_BASE}/responses",
+                        headers={
+                            "Authorization": f"Bearer {self._token.access_token}",
+                            "Content-Type": "application/json",
+                        },
+                        json=payload,
+                        timeout=10.0,
+                    )
+                    if resp.status_code == 200:
+                        available.append(model_name)
+                        logger.info(f"Codex model available: {model_name}")
+                        break  # 최고 랭킹 모델 발견 즉시 종료
+            except Exception:
+                continue
+
+        if available:
+            logger.info(f"Discovered OpenAI model: {available[0]}")
+        else:
+            logger.warning("No Codex models available via probing")
+
+        return available
+
+    def _select_best_model(self, available_models: list[str]) -> str:
+        """가용 모델 중 최고 성능 모델 선택.
+
+        Args:
+            available_models: 사용 가능한 모델 이름 리스트
+
+        Returns:
+            최고 랭킹 모델 이름 (없으면 현재 model_name)
+        """
+        if not available_models:
+            return self.model_name
+
+        ranked = sorted(
+            available_models,
+            key=lambda m: self.MODEL_CAPABILITY_RANKINGS.get(m, 0),
+            reverse=True,
+        )
+        return ranked[0]
 
     async def _call_api(
         self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
@@ -253,28 +354,31 @@ class OpenAIClient(BaseAIClient):
         Returns:
             dict: analysis, conclusion, confidence 포함
         """
-        system_prompt = """당신은 코드 리뷰 및 기술적 분석을 수행하는 전문가입니다.
-주어진 태스크를 분석하고 JSON 형식으로 응답하세요.
+        system_prompt = """You are an expert technical analyst participating \
+in a multi-AI debate.
+Analyze the given task thoroughly and provide your independent assessment.
 
-응답 형식:
+IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
+
+Response format:
 {
-    "analysis": "상세 분석 내용",
-    "conclusion": "핵심 결론 (한 문장)",
-    "confidence": 0.0~1.0 (확신도),
-    "key_points": ["핵심 포인트 1", "핵심 포인트 2", ...],
-    "suggested_steps": ["단계 1", "단계 2", ...]
+    "analysis": "Detailed analysis with specific reasoning",
+    "conclusion": "Core conclusion in one clear sentence",
+    "confidence": 0.0-1.0,
+    "key_points": ["point 1", "point 2"],
+    "suggested_steps": ["step 1", "step 2"]
 }"""
 
-        user_message = f"태스크: {task}"
+        user_message = f"Task: {task}"
         if context:
-            user_message += f"\n\n이전 라운드 컨텍스트:\n{context}"
+            user_message += f"\n\nPrevious context:\n{context}"
 
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
 
-        response = await self._call_api(messages)
+        response = await self._call_api(messages, temperature=0.3)
         content = response["choices"][0]["message"]["content"]
         try:
             return json.loads(content)
@@ -300,31 +404,43 @@ class OpenAIClient(BaseAIClient):
         Returns:
             dict: feedback, agreement_points, disagreement_points 포함
         """
-        system_prompt = """다른 AI의 분석을 리뷰하고 피드백을 제공하세요.
-동의하는 점과 동의하지 않는 점을 명확히 구분하세요.
+        system_prompt = """Review another AI's analysis and provide \
+constructive feedback.
+Clearly distinguish between points of agreement and disagreement.
 
-응답 형식:
+IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
+
+Response format:
 {
-    "feedback": "전반적인 피드백",
-    "agreement_points": ["동의하는 점 1", "동의하는 점 2", ...],
-    "disagreement_points": ["불일치 점 1: 이유", "불일치 점 2: 이유", ...],
-    "suggested_improvements": ["개선 제안 1", "개선 제안 2", ...]
+    "feedback": "Overall feedback",
+    "agreement_points": ["agreement 1", "agreement 2"],
+    "disagreement_points": ["disagreement 1: reason", "disagreement 2: reason"],
+    "suggested_improvements": ["suggestion 1", "suggestion 2"]
 }"""
 
-        user_message = f"""태스크: {task}
+        # peer_analysis를 읽기 좋게 변환
+        peer_summary = (
+            f"Conclusion: {peer_analysis.get('conclusion', 'N/A')}\n"
+            f"Key Points: {', '.join(peer_analysis.get('key_points', []))}\n"
+            f"Confidence: {peer_analysis.get('confidence', 'N/A')}"
+        )
 
-피어 분석:
-{peer_analysis}
+        user_message = f"""Task: {task}
 
-본인 분석:
-{own_analysis}"""
+Peer Analysis:
+{peer_summary}
+
+Your Analysis:
+Conclusion: {own_analysis.get('conclusion', 'N/A')}
+Key Points: {', '.join(own_analysis.get('key_points', []))}
+Confidence: {own_analysis.get('confidence', 'N/A')}"""
 
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
 
-        response = await self._call_api(messages)
+        response = await self._call_api(messages, temperature=0.3)
         content = response["choices"][0]["message"]["content"]
         try:
             return json.loads(content)
@@ -352,31 +468,38 @@ class OpenAIClient(BaseAIClient):
         Returns:
             dict: updated_position, rebuttals, concessions 포함
         """
-        system_prompt = """토론에 참여하여 입장을 발전시키세요.
-상대 의견에 대한 반박과 수용할 점을 구분하세요.
+        system_prompt = """Participate in debate to refine your position.
+Distinguish between rebuttals and concessions to opposing views.
 
-응답 형식:
+IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
+
+Response format:
 {
     "updated_position": {
-        "conclusion": "업데이트된 결론",
-        "confidence": 0.0~1.0,
-        "key_points": ["핵심 포인트들"]
+        "conclusion": "Updated conclusion",
+        "confidence": 0.0-1.0,
+        "key_points": ["key points"]
     },
-    "rebuttals": ["반박 1", "반박 2", ...],
-    "concessions": ["수용 1: 이유", "수용 2: 이유", ...],
-    "remaining_disagreements": ["남은 불일치 1", ...]
+    "rebuttals": ["rebuttal 1", "rebuttal 2"],
+    "concessions": ["concession 1: reason", "concession 2: reason"],
+    "remaining_disagreements": ["disagreement 1"]
 }"""
 
-        opposing_views_str = "\n\n".join(
-            [f"모델 {i+1}:\n{view}" for i, view in enumerate(opposing_views)]
-        )
+        # opposing_views를 읽기 좋게 포맷팅
+        opposing_views_str = "\n\n".join([
+            f"Model {i+1}:\n"
+            f"Conclusion: {view.get('conclusion', 'N/A')}\n"
+            f"Confidence: {view.get('confidence', 'N/A')}"
+            for i, view in enumerate(opposing_views)
+        ])
 
-        user_message = f"""태스크: {task}
+        user_message = f"""Task: {task}
 
-본인 입장:
-{own_position}
+Your Position:
+Conclusion: {own_position.get('conclusion', 'N/A')}
+Confidence: {own_position.get('confidence', 'N/A')}
 
-상대 견해들:
+Opposing Views:
 {opposing_views_str}"""
 
         messages = [
@@ -384,7 +507,7 @@ class OpenAIClient(BaseAIClient):
             {"role": "user", "content": user_message},
         ]
 
-        response = await self._call_api(messages)
+        response = await self._call_api(messages, temperature=0.3)
         content = response["choices"][0]["message"]["content"]
         try:
             return json.loads(content)

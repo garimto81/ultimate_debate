@@ -131,6 +131,4 @@ class BaseProvider(ABC):
 
     def is_token_valid(self, token: AuthToken) -> bool:
         """토큰 유효성 빠른 확인 (만료 시간 기반)"""
-        if token.is_expired():
-            return False
-        return True
+        return not token.is_expired()

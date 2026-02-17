@@ -1,8 +1,10 @@
-"""Consensus checking protocol with hash-based comparison."""
+"""Consensus checking protocol with semantic similarity comparison."""
 
 import hashlib
 from dataclasses import dataclass, field
 from typing import Any
+
+from ultimate_debate.comparison.semantic import SemanticComparator
 
 
 @dataclass
@@ -20,16 +22,19 @@ class ConsensusResult:
 class ConsensusChecker:
     """Check consensus across multiple AI analyses."""
 
-    def __init__(self, threshold: float = 0.8):
+    def __init__(self, threshold: float = 0.8, similarity_threshold: float = 0.3):
         """Initialize consensus checker.
 
         Args:
             threshold: Minimum agreement ratio for FULL_CONSENSUS (default: 0.8)
+            similarity_threshold: Minimum TF-IDF similarity for
+                semantic clustering (default: 0.3)
         """
         self.threshold = threshold
+        self.semantic = SemanticComparator(threshold=similarity_threshold)
 
     def check_consensus(self, analyses: list[dict[str, Any]]) -> ConsensusResult:
-        """Check consensus by comparing conclusion hashes.
+        """Check consensus by semantic similarity clustering.
 
         Args:
             analyses: List of AI analyses with 'conclusion' field
@@ -44,49 +49,39 @@ class ConsensusChecker:
                 details={"reason": "Not enough analyses to compare"},
             )
 
-        # Extract conclusions and compute hashes
-        conclusion_hashes = []
-        conclusion_map = {}
+        # Extract and normalize conclusions
+        conclusions = [
+            self._normalize_conclusion(a.get("conclusion", "")) for a in analyses
+        ]
+        models = [a.get("model", "unknown") for a in analyses]
 
-        for analysis in analyses:
-            conclusion = self._normalize_conclusion(analysis.get("conclusion", ""))
-            hash_value = self._compute_hash(conclusion)
-            conclusion_hashes.append(hash_value)
-
-            if hash_value not in conclusion_map:
-                conclusion_map[hash_value] = {
-                    "text": conclusion,
-                    "count": 0,
-                    "models": [],
-                }
-            conclusion_map[hash_value]["count"] += 1
-            conclusion_map[hash_value]["models"].append(
-                analysis.get("model", "unknown")
+        # Handle edge case: empty conclusions
+        if all(not c for c in conclusions):
+            return ConsensusResult(
+                status="NO_CONSENSUS",
+                next_action="NEED_MORE_ANALYSES",
+                details={"reason": "All conclusions are empty"},
             )
 
-        # Find most common conclusion
-        sorted_conclusions = sorted(
-            conclusion_map.items(), key=lambda x: x[1]["count"], reverse=True
-        )
-        most_common_hash, most_common_data = sorted_conclusions[0]
+        # Semantic similarity clustering
+        comparison = self.semantic.compare(conclusions)
+        clusters = comparison["clusters"]
 
-        # Calculate consensus percentage
-        total_count = len(analyses)
-        consensus_count = most_common_data["count"]
-        consensus_percentage = consensus_count / total_count
+        # Find largest cluster
+        largest_cluster = max(clusters, key=len)
+        consensus_percentage = len(largest_cluster) / len(analyses)
 
-        # Determine agreed and disputed items
+        # Build agreed/disputed items from clusters
         agreed_items = []
         disputed_items = []
 
-        for hash_value, data in conclusion_map.items():
+        for cluster in clusters:
             item = {
-                "conclusion": data["text"],
-                "models": data["models"],
-                "count": data["count"],
+                "conclusion": conclusions[cluster[0]],
+                "models": [models[i] for i in cluster],
+                "count": len(cluster),
             }
-
-            if hash_value == most_common_hash:
+            if cluster == largest_cluster:
                 agreed_items.append(item)
             else:
                 disputed_items.append(item)
@@ -109,9 +104,9 @@ class ConsensusChecker:
             consensus_percentage=consensus_percentage,
             next_action=next_action,
             details={
-                "total_analyses": total_count,
-                "unique_conclusions": len(conclusion_map),
-                "most_common_count": consensus_count,
+                "total_analyses": len(analyses),
+                "unique_clusters": len(clusters),
+                "max_similarity": comparison["max_similarity"],
             },
         )
 

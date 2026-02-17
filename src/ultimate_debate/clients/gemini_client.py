@@ -12,12 +12,14 @@ Browser OAuth 인증과 연동.
 import json
 import logging
 import os
+import re
+import uuid
 from typing import Any
 
 import httpx
-
 from ai_auth import AuthToken, RetryLimitExceededError, TokenStore
 from ai_auth.providers import GoogleProvider
+
 from ultimate_debate.clients.base import BaseAIClient
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,7 @@ class GeminiClient(BaseAIClient):
     """Google Gemini 클라이언트
 
     cloud-platform 스코프의 OAuth 토큰으로 Gemini 모델에 접근합니다.
+    로그인 시 Google AI API에서 모델 리스트를 조회하여 최고 성능 모델을 자동 선택합니다.
 
     지원 모드:
     1. Code Assist: cloudcode-pa.googleapis.com 사용 (기본값, 설정 불필요)
@@ -34,18 +37,14 @@ class GeminiClient(BaseAIClient):
     3. Google AI: x-goog-user-project 헤더 사용
 
     Example:
-        # Code Assist 모드 (기본값, 설정 불필요!)
+        # 자동 모델 선택 (기본값 - 최고 성능 모델 자동 발견)
+        client = GeminiClient()
+        await client.ensure_authenticated()  # 모델 리스트 조회 + 최고 모델 선택
+        print(client.model_name)  # e.g. "gemini-2.5-pro"
+
+        # 수동 모델 지정 (자동 선택 비활성화)
         client = GeminiClient(model_name="gemini-2.5-flash")
         await client.ensure_authenticated()
-        result = await client.analyze("코드 리뷰 요청", context)
-
-        # Vertex AI 모드 (프로젝트 ID 필요)
-        client = GeminiClient(
-            model_name="gemini-2.5-flash",
-            project_id="my-gcp-project",
-            use_code_assist=False,
-            use_vertex_ai=True
-        )
 
     Note:
         Code Assist 모드는 Gemini CLI와 동일한 방식으로 작동합니다.
@@ -57,9 +56,19 @@ class GeminiClient(BaseAIClient):
     # Google AI 엔드포인트 (x-goog-user-project 헤더 필요)
     GOOGLE_AI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
+    # 모델 성능 랭킹 (높을수록 우수) - API 조회 후 필터링에 사용
+    MODEL_CAPABILITY_RANKINGS: dict[str, int] = {
+        "gemini-2.5-pro": 100,
+        "gemini-2.5-flash": 80,
+        "gemini-2.0-pro": 70,
+        "gemini-2.0-flash": 60,
+        "gemini-1.5-pro": 50,
+        "gemini-1.5-flash": 40,
+    }
+
     def __init__(
         self,
-        model_name: str = "gemini-2.5-flash",
+        model_name: str = "gemini-2.5-pro",
         token_store: TokenStore | None = None,
         project_id: str | None = None,
         location: str = "us-central1",
@@ -71,8 +80,12 @@ class GeminiClient(BaseAIClient):
         self.provider = GoogleProvider()
         self._token: AuthToken | None = None
         self._discovered_project_id: str | None = None
+        self._session_id: str = str(uuid.uuid4())
         self._auth_retry_count = 0  # 재인증 재시도 카운터
         self._max_auth_retries = 1  # 최대 재시도 횟수
+
+        # 모델 발견 결과
+        self.discovered_models: list[str] = []
 
         # 프로젝트 설정
         self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -163,7 +176,10 @@ class GeminiClient(BaseAIClient):
         return headers
 
     async def ensure_authenticated(self) -> bool:
-        """인증 상태 확인 및 필요시 로그인
+        """인증 상태 확인 및 필요시 로그인 + 최적 모델 자동 선택.
+
+        인증 완료 후 Google AI API에서 모델 리스트를 조회하여
+        generateContent를 지원하는 모델 중 최고 성능 모델을 자동 선택합니다.
 
         Returns:
             bool: 인증 성공 여부
@@ -174,6 +190,10 @@ class GeminiClient(BaseAIClient):
         if self._token:
             # 토큰 유효성 확인
             if not self._token.is_expired():
+                # Code Assist 모드에서는 project ID 발견 필요
+                if self.use_code_assist and not self._discovered_project_id:
+                    await self._discover_project_id()
+                await self._auto_select_best_model()
                 return True
 
             # 만료된 경우 갱신 시도
@@ -181,6 +201,9 @@ class GeminiClient(BaseAIClient):
                 try:
                     self._token = await self.provider.refresh(self._token)
                     await self.token_store.save(self._token)
+                    if self.use_code_assist:
+                        await self._discover_project_id()
+                    await self._auto_select_best_model()
                     return True
                 except ValueError:
                     pass  # 갱신 실패, 재로그인 필요
@@ -188,7 +211,130 @@ class GeminiClient(BaseAIClient):
         # 새 로그인
         self._token = await self.provider.login()
         await self.token_store.save(self._token)
+        if self.use_code_assist:
+            await self._discover_project_id()
+        await self._auto_select_best_model()
         return True
+
+    async def _auto_select_best_model(self) -> None:
+        """API에서 모델 리스트를 조회하여 최고 성능 모델 자동 선택."""
+        self.discovered_models = await self._discover_models()
+        if self.discovered_models:
+            best = self._select_best_model(self.discovered_models)
+            if best != self.model_name:
+                logger.info(f"Model auto-selected: {self.model_name} -> {best}")
+                self.model_name = best
+
+    async def _discover_models(self) -> list[str]:
+        """Google AI API에서 사용 가능한 Gemini 모델 목록 조회.
+
+        Returns:
+            generateContent를 지원하는 모델 이름 리스트
+        """
+        try:
+            headers = {
+                "Authorization": f"Bearer {self._token.access_token}",
+            }
+            if self._discovered_project_id:
+                headers["x-goog-user-project"] = self._discovered_project_id
+
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{self.GOOGLE_AI_BASE}/models",
+                    headers=headers,
+                    timeout=15.0,
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"Model list API returned {resp.status_code}")
+                    return []
+
+                data = resp.json()
+                models = []
+                for model in data.get("models", []):
+                    name = model.get("name", "").replace("models/", "")
+                    methods = model.get("supportedGenerationMethods", [])
+                    if "generateContent" in methods:
+                        models.append(name)
+
+                logger.info(f"Discovered {len(models)} Gemini models")
+                return models
+
+        except Exception as e:
+            logger.warning(f"Model discovery failed: {e}")
+            return []
+
+    def _select_best_model(self, available_models: list[str]) -> str:
+        """가용 모델 중 최고 성능 모델 선택.
+
+        Args:
+            available_models: 사용 가능한 모델 이름 리스트
+
+        Returns:
+            최고 랭킹 모델 이름 (없으면 현재 model_name)
+        """
+        if not available_models:
+            return self.model_name
+
+        ranked = sorted(
+            available_models,
+            key=lambda m: self.MODEL_CAPABILITY_RANKINGS.get(m, 0),
+            reverse=True,
+        )
+        return ranked[0]
+
+    async def _discover_project_id(self) -> None:
+        """Code Assist API로 project ID 발견 (Gemini CLI 호환).
+
+        loadCodeAssist 엔드포인트를 호출하여 프로젝트 ID를 자동 발견합니다.
+        환경변수 GOOGLE_CLOUD_PROJECT가 설정되어 있으면 우선 사용합니다.
+        """
+        env_project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv(
+            "GOOGLE_CLOUD_PROJECT_ID"
+        )
+
+        load_url = f"{self.CODE_ASSIST_BASE}:loadCodeAssist"
+        headers = {
+            "Authorization": f"Bearer {self._token.access_token}",
+            "Content-Type": "application/json",
+        }
+        request_body = {
+            "cloudaicompanionProject": env_project,
+            "metadata": {
+                "ideType": "IDE_UNSPECIFIED",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI",
+                "duetProject": env_project,
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    load_url,
+                    headers=headers,
+                    json=request_body,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            # 응답에서 project ID 추출
+            discovered = data.get("cloudaicompanionProject")
+            if discovered:
+                self._discovered_project_id = discovered
+                logger.info(f"Code Assist project discovered: {discovered}")
+            elif env_project:
+                self._discovered_project_id = env_project
+                logger.info(f"Using env project ID: {env_project}")
+            else:
+                logger.warning(
+                    "No project ID discovered from loadCodeAssist. "
+                    "Set GOOGLE_CLOUD_PROJECT env var if API calls fail."
+                )
+        except Exception as e:
+            logger.warning(f"loadCodeAssist failed: {e}")
+            if env_project:
+                self._discovered_project_id = env_project
 
     def _build_request_body(
         self, contents: list[dict], temperature: float = 0.7, max_tokens: int = 4096
@@ -204,16 +350,19 @@ class GeminiClient(BaseAIClient):
             dict: 요청 본문
         """
         if self.use_code_assist:
-            # Code Assist API는 request 래퍼와 model 필드 필요
-            # responseMimeType은 Code Assist에서 미지원
+            # Code Assist API: Gemini CLI 호환 형식
+            # project, user_prompt_id, session_id 필수
             return {
                 "model": self.code_assist_model_name,
+                "project": self._discovered_project_id,
+                "user_prompt_id": str(uuid.uuid4()),
                 "request": {
                     "contents": contents,
                     "generationConfig": {
                         "temperature": temperature,
                         "maxOutputTokens": max_tokens,
                     },
+                    "session_id": self._session_id,
                 },
             }
         else:
@@ -323,9 +472,15 @@ class GeminiClient(BaseAIClient):
             return response.json()
 
     def _extract_text(self, response: dict) -> str:
-        """응답에서 텍스트 추출"""
+        """응답에서 텍스트 추출
+
+        Code Assist API는 {"response": {"candidates": [...]}} 형식,
+        Vertex AI/Google AI는 {"candidates": [...]} 형식.
+        """
+        # Code Assist: response 래퍼 안에 candidates
+        data = response.get("response", response)
         try:
-            return response["candidates"][0]["content"]["parts"][0]["text"]
+            return data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError, IndexError):
             return ""
 
@@ -341,38 +496,58 @@ class GeminiClient(BaseAIClient):
         Returns:
             dict: analysis, conclusion, confidence 포함
         """
-        system_prompt = """당신은 코드 리뷰 및 기술적 분석을 수행하는 전문가입니다.
-주어진 태스크를 분석하고 JSON 형식으로 응답하세요.
+        system_prompt = """You are an expert technical analyst participating \
+in a multi-AI debate.
+Analyze the given task thoroughly and provide your independent assessment.
 
-응답 형식:
+IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
+
+Response format:
 {
-    "analysis": "상세 분석 내용",
-    "conclusion": "핵심 결론 (한 문장)",
-    "confidence": 0.0~1.0 (확신도),
-    "key_points": ["핵심 포인트 1", "핵심 포인트 2", ...],
-    "suggested_steps": ["단계 1", "단계 2", ...]
+    "analysis": "Detailed analysis with specific reasoning",
+    "conclusion": "Core conclusion in one clear sentence",
+    "confidence": 0.0-1.0,
+    "key_points": ["point 1", "point 2"],
+    "suggested_steps": ["step 1", "step 2"]
 }"""
 
-        user_message = f"태스크: {task}"
+        user_message = f"Task: {task}"
         if context:
-            user_message += f"\n\n이전 라운드 컨텍스트:\n{context}"
+            user_message += f"\n\nPrevious context:\n{context}"
 
         contents = [
             {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}
         ]
 
-        response = await self._call_api(contents)
+        response = await self._call_api(contents, temperature=0.3)
         text = self._extract_text(response)
+        parsed = self._parse_json_response(text)
+        if parsed is not None:
+            return parsed
+        logger.warning("Gemini analyze: JSON parse failed, returning raw content")
+        return {
+            "analysis": text,
+            "conclusion": "",
+            "confidence": 0.5,
+            "key_points": [],
+        }
+
+    @staticmethod
+    def _parse_json_response(text: str) -> dict | None:
+        """텍스트에서 JSON 추출 (markdown 코드블록 지원)."""
+        # 1차: 직접 파싱
         try:
             return json.loads(text)
-        except json.JSONDecodeError:
-            logger.warning("Gemini analyze: JSON parse failed, returning raw content")
-            return {
-                "analysis": text,
-                "conclusion": "",
-                "confidence": 0.5,
-                "key_points": [],
-            }
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # 2차: markdown 코드블록에서 추출
+        match = re.search(r"```(?:json)?\s*\n(.*?)\n```", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+        return None
 
     async def review(
         self, task: str, peer_analysis: dict[str, Any], own_analysis: dict[str, Any]
@@ -387,40 +562,52 @@ class GeminiClient(BaseAIClient):
         Returns:
             dict: feedback, agreement_points, disagreement_points 포함
         """
-        system_prompt = """다른 AI의 분석을 리뷰하고 피드백을 제공하세요.
-동의하는 점과 동의하지 않는 점을 명확히 구분하세요.
+        system_prompt = """Review another AI's analysis and provide \
+constructive feedback.
+Clearly distinguish between points of agreement and disagreement.
 
-응답 형식:
+IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
+
+Response format:
 {
-    "feedback": "전반적인 피드백",
-    "agreement_points": ["동의하는 점 1", "동의하는 점 2", ...],
-    "disagreement_points": ["불일치 점 1: 이유", "불일치 점 2: 이유", ...],
-    "suggested_improvements": ["개선 제안 1", "개선 제안 2", ...]
+    "feedback": "Overall feedback",
+    "agreement_points": ["agreement 1", "agreement 2"],
+    "disagreement_points": ["disagreement 1: reason", "disagreement 2: reason"],
+    "suggested_improvements": ["suggestion 1", "suggestion 2"]
 }"""
 
-        user_message = f"""태스크: {task}
+        # peer_analysis를 읽기 좋게 변환
+        peer_summary = (
+            f"Conclusion: {peer_analysis.get('conclusion', 'N/A')}\n"
+            f"Key Points: {', '.join(peer_analysis.get('key_points', []))}\n"
+            f"Confidence: {peer_analysis.get('confidence', 'N/A')}"
+        )
 
-피어 분석:
-{peer_analysis}
+        user_message = f"""Task: {task}
 
-본인 분석:
-{own_analysis}"""
+Peer Analysis:
+{peer_summary}
+
+Your Analysis:
+Conclusion: {own_analysis.get('conclusion', 'N/A')}
+Key Points: {', '.join(own_analysis.get('key_points', []))}
+Confidence: {own_analysis.get('confidence', 'N/A')}"""
 
         contents = [
             {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}
         ]
 
-        response = await self._call_api(contents)
+        response = await self._call_api(contents, temperature=0.3)
         text = self._extract_text(response)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            logger.warning("Gemini review: JSON parse failed, returning raw content")
-            return {
-                "feedback": text,
-                "agreement_points": [],
-                "disagreement_points": [],
-            }
+        parsed = self._parse_json_response(text)
+        if parsed is not None:
+            return parsed
+        logger.warning("Gemini review: JSON parse failed, returning raw content")
+        return {
+            "feedback": text,
+            "agreement_points": [],
+            "disagreement_points": [],
+        }
 
     async def debate(
         self,
@@ -438,49 +625,56 @@ class GeminiClient(BaseAIClient):
         Returns:
             dict: updated_position, rebuttals, concessions 포함
         """
-        system_prompt = """토론에 참여하여 입장을 발전시키세요.
-상대 의견에 대한 반박과 수용할 점을 구분하세요.
+        system_prompt = """Participate in debate to refine your position.
+Distinguish between rebuttals and concessions to opposing views.
 
-응답 형식:
+IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
+
+Response format:
 {
     "updated_position": {
-        "conclusion": "업데이트된 결론",
-        "confidence": 0.0~1.0,
-        "key_points": ["핵심 포인트들"]
+        "conclusion": "Updated conclusion",
+        "confidence": 0.0-1.0,
+        "key_points": ["key points"]
     },
-    "rebuttals": ["반박 1", "반박 2", ...],
-    "concessions": ["수용 1: 이유", "수용 2: 이유", ...],
-    "remaining_disagreements": ["남은 불일치 1", ...]
+    "rebuttals": ["rebuttal 1", "rebuttal 2"],
+    "concessions": ["concession 1: reason", "concession 2: reason"],
+    "remaining_disagreements": ["disagreement 1"]
 }"""
 
-        opposing_views_str = "\n\n".join(
-            [f"모델 {i+1}:\n{view}" for i, view in enumerate(opposing_views)]
-        )
+        # opposing_views를 읽기 좋게 포맷팅
+        opposing_views_str = "\n\n".join([
+            f"Model {i+1}:\n"
+            f"Conclusion: {view.get('conclusion', 'N/A')}\n"
+            f"Confidence: {view.get('confidence', 'N/A')}"
+            for i, view in enumerate(opposing_views)
+        ])
 
-        user_message = f"""태스크: {task}
+        user_message = f"""Task: {task}
 
-본인 입장:
-{own_position}
+Your Position:
+Conclusion: {own_position.get('conclusion', 'N/A')}
+Confidence: {own_position.get('confidence', 'N/A')}
 
-상대 견해들:
+Opposing Views:
 {opposing_views_str}"""
 
         contents = [
             {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}
         ]
 
-        response = await self._call_api(contents)
+        response = await self._call_api(contents, temperature=0.3)
         text = self._extract_text(response)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            logger.warning("Gemini debate: JSON parse failed, returning raw content")
-            return {
-                "updated_position": {
-                    "conclusion": text,
-                    "confidence": 0.5,
-                    "key_points": [],
-                },
-                "rebuttals": [],
-                "concessions": [],
-            }
+        parsed = self._parse_json_response(text)
+        if parsed is not None:
+            return parsed
+        logger.warning("Gemini debate: JSON parse failed, returning raw content")
+        return {
+            "updated_position": {
+                "conclusion": text,
+                "confidence": 0.5,
+                "key_points": [],
+            },
+            "rebuttals": [],
+            "concessions": [],
+        }

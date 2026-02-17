@@ -11,7 +11,8 @@ class BaseAIClient(ABC):
         """Initialize AI client.
 
         Args:
-            model_name: Name of the AI model (e.g., 'claude-3-5-sonnet', 'gpt-4', 'gemini-pro')
+            model_name: Name of the AI model
+                (e.g., 'gpt-4', 'gemini-pro')
         """
         self.model_name = model_name
 

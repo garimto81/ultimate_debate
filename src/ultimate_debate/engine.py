@@ -9,6 +9,7 @@ Note:
 """
 
 import asyncio
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
@@ -16,6 +17,21 @@ from typing import Any
 from ultimate_debate.clients.base import BaseAIClient
 from ultimate_debate.consensus.protocol import ConsensusChecker, ConsensusResult
 from ultimate_debate.storage.context_manager import DebateContextManager
+
+logger = logging.getLogger(__name__)
+
+
+class NoAvailableClientsError(Exception):
+    """Raised when no AI clients are available for analysis.
+
+    이 에러는 다음 상황에서 발생합니다:
+    - ai_clients가 비어 있고
+    - include_claude_self=False이거나 Claude 분석이 설정되지 않음
+
+    해결 방법:
+    1. register_ai_client()로 외부 AI(GPT, Gemini)를 등록하거나
+    2. include_claude_self=True로 설정하고 set_claude_analysis() 호출
+    """
 
 
 class UltimateDebate:
@@ -46,6 +62,7 @@ class UltimateDebate:
         max_rounds: int = 5,
         consensus_threshold: float = 0.8,
         include_claude_self: bool = True,
+        strict: bool = False,
     ):
         """Initialize debate orchestrator.
 
@@ -57,6 +74,8 @@ class UltimateDebate:
             include_claude_self: Claude Code 자체가 분석에 참여할지 여부.
                 True(기본값)면 Claude Code가 직접 분석 결과를 제공.
                 API 호출 없이 오케스트레이터 자체가 Claude 역할 수행.
+            strict: Strict 모드. True면 외부 AI가 최소 1개 필수.
+                False(기본값)면 include_claude_self=True 시 Claude만으로도 동작.
         """
         self.task = task
         self.task_id = task_id or self._generate_task_id()
@@ -64,6 +83,7 @@ class UltimateDebate:
         self.max_rounds = max_rounds
         self.consensus_threshold = consensus_threshold
         self.include_claude_self = include_claude_self
+        self.strict = strict
 
         # Initialize components
         self.context_manager = DebateContextManager(self.task_id)
@@ -76,6 +96,7 @@ class UltimateDebate:
         # Debate state
         self.current_analyses: dict[str, dict[str, Any]] = {}
         self.consensus_result: ConsensusResult | None = None
+        self.failed_clients: dict[str, str] = {}
 
         # Claude 자체 분석 결과 저장 (외부에서 주입)
         self._claude_self_analysis: dict[str, Any] | None = None
@@ -147,6 +168,48 @@ class UltimateDebate:
             },
         )
 
+        # Strict mode: 외부 AI 필수 검증
+        if self.strict and not self.ai_clients:
+            raise NoAvailableClientsError(
+                "Strict 모드: 외부 AI(GPT, Gemini) 최소 1개 등록 필수.\n"
+                "register_ai_client()로 외부 AI를 등록하세요."
+            )
+
+        # Preflight: 등록된 외부 AI 클라이언트 건강 확인
+        if self.ai_clients:
+            logger.info("Preflight: checking client authentication...")
+            dead_clients = []
+
+            for model_name, client in list(self.ai_clients.items()):
+                try:
+                    await asyncio.wait_for(
+                        client.ensure_authenticated(),
+                        timeout=30.0
+                    )
+                    logger.info(f"✓ {model_name} preflight passed")
+                except TimeoutError:
+                    error_msg = "Preflight timeout (30s)"
+                    logger.warning(f"✗ {model_name} {error_msg}")
+                    self.failed_clients[model_name] = error_msg
+                    dead_clients.append(model_name)
+                except Exception as e:
+                    error_msg = f"Preflight failed: {e}"
+                    logger.warning(f"✗ {model_name} {error_msg}")
+                    self.failed_clients[model_name] = error_msg
+                    dead_clients.append(model_name)
+
+            # 실패 클라이언트 제거
+            for model_name in dead_clients:
+                del self.ai_clients[model_name]
+
+            # Strict 모드에서 모든 클라이언트 실패 시 에러
+            if self.strict and not self.ai_clients:
+                raise NoAvailableClientsError(
+                    f"Preflight 실패: 모든 외부 AI 사용 불가.\n"
+                    f"실패 클라이언트: {list(self.failed_clients.keys())}\n"
+                    f"상세: {self.failed_clients}"
+                )
+
         while self.round < self.max_rounds:
             print(f"\n=== Round {self.round} ===")
 
@@ -183,9 +246,15 @@ class UltimateDebate:
                 print("Phase 3: Cross Review")
                 reviews = await self.run_cross_review()
 
+                # 플레이스홀더 리뷰 필터링
+                real_reviews = {
+                    k: v for k, v in reviews.items()
+                    if not v.get("requires_input")
+                }
+
                 # Re-check consensus after review
                 review_consensus = self.consensus_checker.check_cross_review_consensus(
-                    list(reviews.values())
+                    list(real_reviews.values())
                 )
 
                 if review_consensus.status == "FULL_CONSENSUS":
@@ -199,9 +268,12 @@ class UltimateDebate:
 
                 # Update analyses with debate results
                 for model, result in debate_results.items():
-                    self.current_analyses[model]["conclusion"] = result.get(
-                        "updated_position", ""
-                    )
+                    updated = result.get("updated_position", "")
+                    if isinstance(updated, dict):
+                        conclusion = updated.get("conclusion", "")
+                        self.current_analyses[model]["conclusion"] = conclusion
+                    else:
+                        self.current_analyses[model]["conclusion"] = updated
 
             self.round += 1
 
@@ -233,9 +305,22 @@ class UltimateDebate:
                 tasks.append(client.analyze(self.task))
                 model_names.append(model_name)
 
-            results = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for model_name, result in zip(model_names, results, strict=True):
+                # 개별 클라이언트 실패 시 graceful skip
+                if isinstance(result, Exception):
+                    logger.warning(f"{model_name} analysis failed: {result}")
+                    self.failed_clients[model_name] = str(result)
+                    continue
+
+                # 결과 무결성 검증
+                if not self._validate_analysis(model_name, result):
+                    error_msg = "분석 결과 무결성 검증 실패"
+                    logger.warning(f"{model_name}: {error_msg}")
+                    self.failed_clients[model_name] = error_msg
+                    continue
+
                 # API 응답의 정확한 모델 버전 보존 (존재 시)
                 if "model_version" not in result:
                     result["model_version"] = result.get("model", model_name)
@@ -248,12 +333,31 @@ class UltimateDebate:
         # 2. Claude Code 자체 분석 추가 (API 호출 없음)
         if self.include_claude_self:
             claude_analysis = self._get_claude_self_analysis()
-            analyses["claude"] = claude_analysis
-            self.context_manager.save_round(self.round, "claude", claude_analysis)
 
-        # 3. 클라이언트도 없고 Claude 자체 참여도 없으면 mock
+            # Claude 분석도 검증 (플레이스홀더 필터링)
+            if self._validate_analysis("claude", claude_analysis):
+                analyses["claude"] = claude_analysis
+                self.context_manager.save_round(
+                    self.round, "claude", claude_analysis
+                )
+            else:
+                logger.warning(
+                    "Claude 자체 분석이 유효하지 않음 "
+                    "(set_claude_analysis() 호출 필요)"
+                )
+                self.failed_clients["claude"] = (
+                    "플레이스홀더 분석 (set_claude_analysis() 미호출)"
+                )
+
+        # 3. 클라이언트도 없고 Claude 자체 참여도 없으면 에러
         if not analyses:
-            return self._mock_parallel_analysis()
+            raise NoAvailableClientsError(
+                "분석 가능한 AI 클라이언트가 없습니다.\n"
+                "해결 방법:\n"
+                "1. register_ai_client()로 외부 AI(GPT, Gemini)를 등록하거나\n"
+                "2. include_claude_self=True를 설정하고 "
+                "set_claude_analysis()를 호출하세요."
+            )
 
         self.current_analyses = analyses
         return analyses
@@ -281,6 +385,58 @@ class UltimateDebate:
             "requires_input": True,  # 입력 필요 플래그
         }
 
+    def _validate_analysis(self, model: str, result: dict[str, Any]) -> bool:
+        """Validate that analysis result is a genuine API response.
+
+        검증 항목:
+        1. 필수 필드 존재 (analysis, conclusion, confidence)
+        2. 최소 분석 길이 (50자 이상)
+        3. confidence 값 범위 (0.0~1.0)
+
+        Args:
+            model: Model name for logging
+            result: Analysis result to validate
+
+        Returns:
+            True if valid, False if invalid
+
+        Note:
+            플레이스홀더 분석 (requires_input=True)도 유효하지 않은 것으로 처리.
+        """
+        # 플레이스홀더 체크
+        if result.get("requires_input"):
+            logger.warning(f"{model}: 플레이스홀더 분석 (requires_input=True)")
+            return False
+
+        # 필수 필드 검증
+        required_fields = ["analysis", "conclusion", "confidence"]
+        missing = [f for f in required_fields if f not in result]
+        if missing:
+            logger.warning(f"{model}: 필수 필드 누락 {missing}")
+            return False
+
+        # 최소 분석 길이 검증 (실제 분석은 최소 50자 이상)
+        analysis_text = result.get("analysis", "")
+        if not isinstance(analysis_text, str) or len(analysis_text) < 50:
+            logger.warning(
+                f"{model}: 분석이 너무 짧음 ({len(analysis_text)}자). "
+                f"최소 50자 이상 필요."
+            )
+            return False
+
+        # confidence 범위 검증
+        confidence = result.get("confidence", 0)
+        if not isinstance(confidence, int | float):
+            logger.warning(
+                f"{model}: confidence가 숫자가 아님 ({type(confidence)})"
+            )
+            return False
+        if not (0 <= confidence <= 1):
+            logger.warning(f"{model}: confidence 범위 초과 ({confidence})")
+            return False
+
+        return True
+
     async def run_cross_review(self) -> dict[str, dict[str, Any]]:
         """Phase 2: Run cross-review between models.
 
@@ -299,6 +455,11 @@ class UltimateDebate:
 
         # 1. 외부 AI가 다른 모델을 리뷰 (Claude 포함)
         for reviewer_name, reviewer_client in self.ai_clients.items():
+            # 분석 실패한 클라이언트는 리뷰에서 제외
+            if reviewer_name not in self.current_analyses:
+                logger.warning(f"{reviewer_name} skipped in cross review (no analysis)")
+                continue
+
             for reviewed_name, reviewed_analysis in self.current_analyses.items():
                 if reviewer_name == reviewed_name:
                     continue
@@ -397,6 +558,11 @@ class UltimateDebate:
 
         # 1. 외부 AI 토론 참여
         for model_name, client in self.ai_clients.items():
+            # 분석 실패한 클라이언트는 토론에서 제외
+            if model_name not in self.current_analyses:
+                logger.warning(f"{model_name} skipped in debate (no analysis)")
+                continue
+
             own_position = self.current_analyses[model_name]
             opposing_views = [
                 analysis
@@ -446,6 +612,27 @@ class UltimateDebate:
             "rebuttals": [],
             "concessions": [],
             "requires_input": True,
+        }
+
+    async def run_verification(self) -> dict[str, Any]:
+        """Phase 4.2 전용 축약 워크플로우.
+
+        전체 5-phase 대신 analyze → consensus check만 수행.
+        검증 목적이므로 debate round 없이 1회 분석 후 합의 판정.
+
+        Returns:
+            Verification result with consensus status and analyses
+        """
+        analyses = await self.run_parallel_analysis()
+        self.consensus_result = self.consensus_checker.check_consensus(
+            list(analyses.values())
+        )
+        return {
+            "status": self.consensus_result.status,
+            "consensus_percentage": self.consensus_result.consensus_percentage,
+            "agreed_items": self.consensus_result.agreed_items,
+            "disputed_items": self.consensus_result.disputed_items,
+            "analyses": {k: v.get("conclusion", "") for k, v in analyses.items()},
         }
 
     def get_final_strategy(self) -> dict[str, Any]:
@@ -511,6 +698,7 @@ class UltimateDebate:
             "registered_models": list(self.ai_clients.keys()),  # 외부 AI만
             "participating_models": participating_models,  # Claude 포함 전체
             "include_claude_self": self.include_claude_self,
+            "failed_clients": self.failed_clients,
             "context": context_status,
         }
 

@@ -34,11 +34,7 @@ class ConvergenceTracker:
         recent = self.history[-self.window_size :]
 
         # Check if monotonically increasing
-        for i in range(len(recent) - 1):
-            if recent[i + 1] <= recent[i]:
-                return False
-
-        return True
+        return all(recent[i + 1] > recent[i] for i in range(len(recent) - 1))
 
     def is_diverging(self) -> bool:
         """Check if consensus scores are diverging (decreasing trend).
@@ -53,11 +49,7 @@ class ConvergenceTracker:
         recent = self.history[-self.window_size :]
 
         # Check if monotonically decreasing
-        for i in range(len(recent) - 1):
-            if recent[i + 1] >= recent[i]:
-                return False
-
-        return True
+        return all(recent[i + 1] < recent[i] for i in range(len(recent) - 1))
 
     def is_stable(self, tolerance: float = 0.05) -> bool:
         """Check if consensus scores are stable (within tolerance).
