@@ -1,13 +1,16 @@
-# /auto REFERENCE - Phase 전환 상세 워크플로우 (v21.0)
+# /auto REFERENCE - Phase 전환 상세 워크플로우 (v23.0)
 
 > **동기화 안내**: 핵심 코드 블록(Tool Call 패턴)은 `SKILL.md`에 인라인. 이 파일은 확장 패턴, 옵션 워크플로우, Gate 조건 상세를 담당합니다. SKILL.md의 인라인 코드 블록을 수정할 경우 이 파일의 해당 섹션도 함께 업데이트하세요.
-> **v21.0**: 모든 Phase에서 Agent Teams 단일 패턴 사용. Skill() 호출 0개. State 파일 의존 0개.
+> **v23.0**: 모든 Phase에서 Agent Teams 단일 패턴 사용. Skill() 호출 0개. State 파일 의존 0개.
+> **v23.0 변경**: Sonnet 4.6 통합, 1M context window, 모든 복잡도 모드에서 model="sonnet" 기본, --opus 플래그 도입.
 
 ---
 
 ## Agent Teams 운영 규칙 (v21.0)
 
 **모든 에이전트 호출은 Agent Teams in-process 방식을 사용합니다. Skill() 호출 0개.**
+
+**모델 오버라이드 (v23.0 Sonnet 4.6)**: Sonnet 4.6이 Opus-level 성능($3/$15)을 제공하므로, 모든 복잡도 모드에서 기본 model="sonnet". `--opus` 플래그 시에만 HEAVY의 핵심 에이전트(design-writer, impl-manager, architect, code-reviewer)가 opus로 에스컬레이션. Context Window: 1M tokens (Sonnet 4.6 beta).
 
 ### 팀 라이프사이클
 
@@ -23,9 +26,9 @@
 4. **순차 작업**: 이전 teammate `shutdown_request` 완료 후 다음 teammate spawn
 5. **병렬 작업**: 독립 작업은 동시 spawn 가능 (Phase 1.0 분석 등)
 
-### Context 분리 장점 (vs 기존 subagent)
+### Context 분리 장점 (vs 기존 단일 context)
 
-| 기존 subagent | Agent Teams |
+| 기존 단일 context | Agent Teams |
 |--------------|-------------|
 | 결과가 Lead context에 합류 → overflow | Mailbox로 전달 → Lead context 보호 |
 | foreground 3개 상한 필요 | 제한 없음 (독립 context) |
@@ -97,10 +100,10 @@ cmd /c "mklink /J \"C:\\claude\\wt\\{feature}-test\\.claude\" \"C:\\claude\\.cla
 ```
 
 ```
-Task(subagent_type="executor", name="impl", team_name="pdca-{feature}",
-     model="sonnet", prompt="C:\\claude\\wt\\{feature}-impl\\ 경로에서 구현. 다른 경로 수정 금지.")
-Task(subagent_type="executor", name="tester", team_name="pdca-{feature}",
-     model="sonnet", prompt="C:\\claude\\wt\\{feature}-test\\ 경로에서 테스트 작성. 다른 경로 수정 금지.")
+Task(subagent_type="executor-high", name="impl", team_name="pdca-{feature}",
+     model="sonnet", prompt="C:\\claude\\wt\\{feature}-impl\\ 경로에서 구현. 다른 경로 수정 금지.")  # --opus 시 model="opus"
+Task(subagent_type="executor-high", name="tester", team_name="pdca-{feature}",
+     model="sonnet", prompt="C:\\claude\\wt\\{feature}-test\\ 경로에서 테스트 작성. 다른 경로 수정 금지.")  # --opus 시 model="opus"
 ```
 
 cleanup 시 모든 sub-worktree도 함께 제거.
@@ -174,7 +177,7 @@ SendMessage(type="shutdown_request", recipient="issue-analyst")
 **LIGHT (0-1점): Planner haiku teammate**
 ```
 Task(subagent_type="planner", name="planner", team_name="pdca-{feature}",
-     model="haiku", prompt="... (복잡도: LIGHT {score}/5, 단일 파일 수정 예상). docs/01-plan/{feature}.plan.md 생성.")
+     model="haiku", prompt="... (복잡도: LIGHT {score}/5, 단일 파일 수정 예상). 사용자 확인/인터뷰 단계를 건너뛰세요. 바로 계획 문서를 작성하세요. docs/01-plan/{feature}.plan.md 생성.")
 SendMessage(type="message", recipient="planner", content="계획 수립 시작. 완료 후 TaskUpdate로 completed 처리.")
 # 완료 대기 → shutdown_request
 ```
@@ -182,7 +185,7 @@ SendMessage(type="message", recipient="planner", content="계획 수립 시작. 
 **STANDARD (2-3점): Planner sonnet teammate**
 ```
 Task(subagent_type="planner", name="planner", team_name="pdca-{feature}",
-     model="sonnet", prompt="... (복잡도: STANDARD {score}/5, 판단 근거 포함). docs/01-plan/{feature}.plan.md 생성.")
+     model="sonnet", prompt="... (복잡도: STANDARD {score}/5, 판단 근거 포함). 사용자 확인/인터뷰 단계를 건너뛰세요. 바로 계획 문서를 작성하세요. docs/01-plan/{feature}.plan.md 생성.")
 SendMessage(type="message", recipient="planner", content="계획 수립 시작. 완료 후 TaskUpdate로 completed 처리.")
 # 완료 대기 → shutdown_request
 ```
@@ -227,11 +230,12 @@ Loop (max 5 iterations):
                Plan 파일: docs/01-plan/{feature}.plan.md
                Architect 소견: {architect_feedback}
                당신은 까다로운 코드 리뷰어입니다. 일반적으로 계획은 3회 이상 수정이 필요합니다.
-               반드시 검증:
-               - 모든 파일 참조가 실제 존재하는 경로인지
-               - acceptance criteria가 구체적이고 측정 가능한지
-               - 모호한 표현 ('적절히', '필요 시', '가능하면' 등) 여부
-               - 누락된 edge case가 없는지
+               === Quality Gates 4 (QG1-QG4) ===
+               QG1 파일 참조 유효: 모든 파일 참조가 실제 존재하는 경로인지 검증
+               QG2 Acceptance Criteria 구체적: acceptance criteria가 구체적이고 측정 가능한지 검증
+               QG3 모호어 0건: '적절히', '필요 시', '가능하면', '등' 등 모호한 표현 0건 확인
+               QG4 Edge Case 2건+: 명시적 edge case가 2건 이상 포함되었는지 확인
+               각 QG에 대해 PASS/FAIL 판정을 출력하세요.
                반드시 첫 줄에 VERDICT: APPROVE 또는 VERDICT: REVISE를 출력하세요.
                APPROVE는 위 모든 조건 충족 시에만. REVISE 시 구체적 개선 피드백을 포함하세요.")
   SendMessage(type="message", recipient="critic-{iteration_count}", content="계획 검토 시작.")
@@ -245,7 +249,7 @@ Loop (max 5 iterations):
       → Loop 종료, Phase 2 진입
   elif "VERDICT: REVISE" in first_line:
       → critic_feedback = critic_message에서 VERDICT: 줄 이후 전체
-      → 누적 피드백이 1,500t 초과 시 최신 2회분만 유지
+      → 누적 피드백이 5,000t 초과 시 최신 3회분만 유지 (1M context window 활용)
         (이전: "Iteration {N}: {핵심 요약 1줄}" 형태로 압축)
       → 다음 iteration
   else:
@@ -260,9 +264,65 @@ Loop (max 5 iterations):
 - 판정 추출: Critic 메시지 첫 줄에서 `VERDICT: APPROVE` 또는 `VERDICT: REVISE` 키워드 확인
 - 키워드 불일치: 첫 줄에 VERDICT 없으면 REVISE로 간주
 - 피드백 범위: REVISE 시 `VERDICT:` 줄 이후 전체 내용을 critic_feedback에 저장
-- 피드백 1,500t 이하: 전체 누적 유지 / 초과: 최신 2회분 전문 + 이전은 1줄 압축 / 5회 초과: 강제 APPROVE
+- 피드백 5,000t 이하: 전체 누적 유지 / 초과: 최신 3회분 전문 + 이전은 1줄 압축 / 5회 초과: 강제 APPROVE
 
 **산출물**: `docs/01-plan/{feature}.plan.md`
+
+### Step 1.2 LIGHT: Lead Quality Gate (v22.1 신규)
+
+LIGHT(0-1점) 모드에서 Planner(haiku) 완료 후 Lead가 직접 수행하는 최소 검증:
+
+```
+# Lead Quality Gate (에이전트 추가 비용: 0)
+plan_content = Read("docs/01-plan/{feature}.plan.md")
+
+# 조건 1: plan 파일 존재 + 내용 있음 (빈 파일 거부)
+if not plan_content or len(plan_content.strip()) < 50:
+    → Planner 1회 재요청 ("계획 내용이 부족합니다. 최소 배경, 구현 범위, 영향 파일을 포함하세요.")
+
+# 조건 2: 파일 경로 1개 이상 언급
+if no file path pattern (e.g., "src/", ".py", ".ts", ".md") found:
+    → Planner 1회 재요청 ("구현 대상 파일 경로를 1개 이상 포함하세요.")
+
+# 미충족 시 1회만 재요청. 2회째 실패 → 그대로 Phase 2 진입 (LIGHT이므로 과도한 차단 불필요)
+```
+
+### Step 1.2 STANDARD: Critic-Lite 단일 검토 (v22.1 신규)
+
+STANDARD(2-3점) 모드에서 Planner(sonnet) 완료 후 Critic-Lite 1회 검토:
+
+```
+Task(subagent_type="critic", name="critic-lite", team_name="pdca-{feature}",
+     model="sonnet",
+     prompt="[Phase 1 STANDARD Critic-Lite] 계획 품질 검토.
+             Plan 파일: docs/01-plan/{feature}.plan.md
+
+             === Quality Gates 4 (QG1-QG4) ===
+             QG1 파일 참조 유효: Plan에 언급된 모든 파일 경로가 실제 존재하는지 Glob으로 확인.
+                 PASS: 모든 경로 존재 / FAIL: 1개라도 미존재
+             QG2 Acceptance Criteria 구체적: 완료 기준이 구체적이고 측정 가능한지 확인.
+                 PASS: 각 항목에 검증 가능한 기준 명시 / FAIL: '잘 동작해야 함' 등 모호한 기준
+             QG3 모호어 0건: '적절히', '필요 시', '가능하면', '등', '기타' 등 모호 표현 스캔.
+                 PASS: 0건 / FAIL: 1건 이상 (위치와 대안 제시)
+             QG4 Edge Case 2건+: 예외 상황이 2건 이상 명시되었는지 확인.
+                 PASS: 2건+ / FAIL: 0-1건 (누락된 edge case 예시 제시)
+
+             반드시 첫 줄에 VERDICT: APPROVE 또는 VERDICT: REVISE를 출력하세요.
+             각 QG에 대해 PASS/FAIL + 근거를 포함하세요.
+             REVISE 시 구체적 개선 피드백을 포함하세요.")
+SendMessage(type="message", recipient="critic-lite", content="Plan 검토 시작.")
+# 완료 대기 → shutdown_request
+
+# VERDICT 파싱
+critic_message = Mailbox에서 수신한 critic-lite 메시지
+if "VERDICT: APPROVE" in first_line:
+    → Phase 2 진입
+elif "VERDICT: REVISE" in first_line:
+    → Planner 1회 수정 (critic_feedback = REVISE 사유 전달)
+    → 수정본 수용 (추가 Critic 검토 없음, 무한 루프 방지)
+else:
+    → REVISE로 간주
+```
 
 ### Step 1.3: 이슈 연동 (GitHub Issue)
 
@@ -291,30 +351,36 @@ Loop (max 5 iterations):
 
 | Phase | 실행 |
 |-------|------|
-| Phase 1 | Explore teammates (haiku) x2 + Planner teammate (haiku) |
+| Phase 1 | Explore teammates (haiku) x2 + Planner (haiku) + Lead Quality Gate |
 | Phase 2 | **스킵** (설계 문서 생성 없음) |
-| Phase 3 | Executor teammate (sonnet) 단일 실행 |
-| Phase 4 | Lead QA 1사이클 + Architect 검증 (gap-detector, E2E 스킵) |
+| Phase 3.1 | Executor teammate (sonnet) 단일 실행 |
+| Phase 3.2 | — (Architect Gate 없음) |
+| Phase 4.1 | QA Runner 1회 |
+| Phase 4.2 | Architect 검증 (gap-detector, E2E 스킵) |
 | Phase 5 | haiku 보고서 (APPROVE 기반, gap-detector 없음) |
 
 ### STANDARD 모드 (2-3점)
 
 | Phase | 실행 |
 |-------|------|
-| Phase 1 | Explore teammates (haiku) x2 + Planner teammate (sonnet) |
+| Phase 1 | Explore teammates (haiku) x2 + Planner (sonnet) + Critic-Lite |
 | Phase 2 | Executor teammate (sonnet) — 설계 문서 생성 |
-| Phase 3 | impl-manager teammate (sonnet) — 5조건 자체 루프 |
-| Phase 4 | Lead QA 3사이클 + E2E (있으면) + Architect + gap-detector + code-analyzer |
+| Phase 3.1 | impl-manager teammate (sonnet) — 5조건 자체 루프 |
+| Phase 3.2 | Architect Gate (외부 검증, max 2회 rejection) |
+| Phase 4.1 | QA Runner 3회 + Architect 진단 + Domain-Smart Fix |
+| Phase 4.2 | Architect + gap-detector + code-analyzer (순차) |
 | Phase 5 | gap < 90% → pdca-iterator teammate (최대 5회) |
 
 ### HEAVY 모드 (4-5점)
 
 | Phase | 실행 |
 |-------|------|
-| Phase 1 | Explore teammates (haiku) x2 + Planner-Critic Loop (max 5 iter) |
-| Phase 2 | Executor-high teammate (opus) — 설계 문서 생성 |
-| Phase 3 | impl-manager teammate (opus) — 5조건 자체 루프 + 병렬 가능 |
-| Phase 4 | Lead QA 5사이클 + E2E (필수) + Architect + gap-detector + code-analyzer (opus) |
+| Phase 1 | Explore teammates (haiku) x2 + Planner-Critic Loop (max 5 iter, QG1-4) |
+| Phase 2 | Executor-high teammate (sonnet, --opus 시 opus) — 설계 문서 생성 |
+| Phase 3.1 | impl-manager teammate (sonnet, --opus 시 opus) — 5조건 자체 루프 + 병렬 가능 |
+| Phase 3.2 | Architect Gate (외부 검증, max 2회 rejection) |
+| Phase 4.1 | QA Runner 5회 + Architect 진단 + Domain-Smart Fix |
+| Phase 4.2 | Architect + gap-detector + code-analyzer (sonnet, --opus 시 opus, 순차) |
 | Phase 5 | gap < 90% → pdca-iterator teammate (최대 5회) |
 
 ### 자동 승격 규칙 (Phase 중 복잡도 상향 조정)
@@ -322,7 +388,7 @@ Loop (max 5 iterations):
 | 승격 조건 | 결과 |
 |----------|------|
 | 빌드 실패 2회 이상 | LIGHT → STANDARD |
-| QA 3사이클 초과 | STANDARD → HEAVY |
+| QA 3사이클 초과 (STANDARD→HEAVY만) | STANDARD → HEAVY |
 | 영향 파일 5개 이상 | LIGHT/STANDARD → HEAVY |
 | Architect REJECT 2회 | 현재 모드 유지, pdca-iterator 최대 회수 +2 |
 
@@ -345,10 +411,10 @@ SendMessage(type="message", recipient="design-writer", content="설계 문서 �
 # 완료 대기 → shutdown_request
 ```
 
-**HEAVY 모드: Executor-high opus teammate**
+**HEAVY 모드: Executor-high sonnet teammate**
 ```
 Task(subagent_type="executor-high", name="design-writer", team_name="pdca-{feature}",
-     model="opus",
+     model="sonnet",  # --opus 시 model="opus"
      prompt="docs/01-plan/{feature}.plan.md를 참조하여 설계 문서를 작성하세요.
      필수 포함: 구현 대상 파일 목록, 인터페이스 설계, 데이터 흐름, 테스트 전략, 예상 위험 요소.
      출력: docs/02-design/{feature}.design.md")
@@ -364,6 +430,8 @@ SendMessage(type="message", recipient="design-writer", content="설계 문서 �
 |:-:|----------|----------|
 | 1 | 구현 대상 파일 목록 | 구체적 파일 경로 나열 존재 |
 | 2 | 인터페이스/API 설계 | 함수/클래스 시그니처 정의 |
+| 3 | 테스트 전략 | 테스트 범위/방법 언급 존재 |
+| 4 | 데이터 흐름 | 입출력 흐름 기술 존재 |
 
 ---
 
@@ -395,10 +463,10 @@ SendMessage(type="message", recipient="impl-manager", content="5조건 구현 �
 # Lead는 IMPLEMENTATION_COMPLETED 또는 IMPLEMENTATION_FAILED 메시지만 수신
 ```
 
-**HEAVY 모드: impl-manager teammate (opus) — 5조건 자체 루프 + 병렬 가능**
+**HEAVY 모드: impl-manager teammate (sonnet) — 5조건 자체 루프 + 병렬 가능**
 ```
 Task(subagent_type="executor-high", name="impl-manager", team_name="pdca-{feature}",
-     model="opus",
+     model="sonnet",  # --opus 시 model="opus"
      prompt="{impl-manager prompt 전문 — 아래 'impl-manager Prompt 전문' 섹션 참조}")
 SendMessage(type="message", recipient="impl-manager", content="5조건 구현 루프 시작.")
 # Lead는 IMPLEMENTATION_COMPLETED 또는 IMPLEMENTATION_FAILED 메시지만 수신
@@ -408,11 +476,11 @@ SendMessage(type="message", recipient="impl-manager", content="5조건 구현 �
 ```
 # Lead가 설계 문서 분석 → 독립 작업 분할
 Task(subagent_type="executor-high", name="impl-api",
-     team_name="pdca-{feature}", model="opus",
+     team_name="pdca-{feature}", model="sonnet",  # --opus 시 model="opus"
      prompt="[Phase 3 HEAVY 병렬] API 구현 담당. {impl-manager 전체 prompt}.
              담당 범위: src/api/ 하위 파일만. 다른 경로 수정 금지.")
 Task(subagent_type="executor-high", name="impl-ui",
-     team_name="pdca-{feature}", model="opus",
+     team_name="pdca-{feature}", model="sonnet",  # --opus 시 model="opus"
      prompt="[Phase 3 HEAVY 병렬] UI 구현 담당. {impl-manager 전체 prompt}.
              담당 범위: src/components/ 하위 파일만. 다른 경로 수정 금지.")
 
@@ -424,12 +492,83 @@ SendMessage(type="message", recipient="impl-ui", content="UI 구현 시작.")
 
 **--worktree 병렬 격리** (Worktree 통합 섹션의 Agent Teams 병렬 격리 참조)
 
-### Phase 3→4 Gate: impl-manager 완료 판정
+### Phase 3→4 Gate: impl-manager 완료 판정 + Architect Gate (v22.1)
 
-- LIGHT: 스킵 (5조건 검증 없음, 빌드 통과만 확인)
-- STANDARD/HEAVY: impl-manager가 `IMPLEMENTATION_COMPLETED` 메시지 전송 시 Phase 4 진입
+- LIGHT: 빌드 통과만 확인 (Architect Gate 없음, Phase 4 직행)
+- STANDARD/HEAVY: impl-manager `IMPLEMENTATION_COMPLETED` → **Step 3.2 Architect Gate 필수** → Phase 4
 - impl-manager가 `IMPLEMENTATION_FAILED` 메시지 전송 시 Lead가 사용자에게 알림 + 수동 개입 요청
 - --interactive 모드: 사용자 확인 요청
+
+### Step 3.2: Architect Verification Gate (v22.1 신규, STANDARD/HEAVY 필수)
+
+impl-manager가 IMPLEMENTATION_COMPLETED를 보고한 후, 독립 Architect가 구현을 외부 검증합니다.
+
+```
+rejection_count = 0  # Lead 메모리에서 관리
+
+# Architect 외부 검증
+Task(subagent_type="architect", name="impl-verifier", team_name="pdca-{feature}",
+     model="sonnet",
+     prompt="[Phase 3 Architect Gate] 구현 외부 검증.
+             Plan: docs/01-plan/{feature}.plan.md
+             Design: docs/02-design/{feature}.design.md (있으면)
+
+             구현된 코드가 Plan/Design 요구사항을 충족하는지 검증하세요.
+
+             검증 항목:
+             1. Plan의 모든 구현 항목이 실제 구현되었는지
+             2. 설계 문서의 인터페이스/API가 구현과 일치하는지
+             3. TDD 규칙 준수 (테스트 존재 여부)
+             4. 빌드/lint 에러가 없는지 (ruff check, tsc --noEmit 등)
+             5. 보안 취약점 (OWASP Top 10) 여부
+
+             반드시 첫 줄에 다음 형식으로 출력하세요:
+             VERDICT: APPROVE 또는 VERDICT: REJECT
+             DOMAIN: {UI|build|test|security|logic|other}
+
+             REJECT 시 구체적 거부 사유와 수정 지침을 포함하세요.")
+SendMessage(type="message", recipient="impl-verifier", content="구현 외부 검증 시작.")
+# 완료 대기 → shutdown_request
+
+# VERDICT 파싱
+verifier_message = Mailbox에서 수신한 impl-verifier 메시지
+if "VERDICT: APPROVE" in first_line:
+    → Phase 4 진입
+elif "VERDICT: REJECT" in first_line:
+    rejection_count += 1
+    domain = DOMAIN 값 추출
+    rejection_reason = VERDICT 줄 이후 전체 내용
+
+    if rejection_count >= 2:
+        → "[Phase 3] Architect 2회 거부. 사용자 판단 필요." 출력
+        → 사용자에게 알림 후 Phase 4 진입 허용 (완전 차단은 아님)
+    else:
+        → Step 3.3 Domain-Smart Fix 실행 → Architect 재검증
+```
+
+### Step 3.3: Domain-Smart Fix Routing (v22.1 신규)
+
+Architect REJECT 시 DOMAIN 값에 따라 전문 에이전트에게 수정 위임:
+
+| Architect DOMAIN 값 | 에이전트 | subagent_type |
+|---------------------|---------|---------------|
+| UI, component, style | designer | `designer` |
+| build, compile, type | build-fixer | `build-fixer` |
+| test, coverage | executor | `executor` |
+| security | security-reviewer | `security-reviewer` |
+| logic, other | executor | `executor` |
+
+```
+# Domain-Smart Fix
+Task(subagent_type="{domain_agent}", name="domain-fixer",
+     team_name="pdca-{feature}", model="sonnet",
+     prompt="[Phase 3 Domain Fix] Architect 거부 사유 해결.
+             거부 사유: {rejection_reason}
+             DOMAIN: {domain}
+             수정 후 해당 검사를 재실행하여 통과를 확인하세요.")
+SendMessage(type="message", recipient="domain-fixer", content="Architect 피드백 반영 시작.")
+# 완료 대기 → shutdown_request → Step 3.2 Architect 재검증
+```
 
 ---
 
@@ -485,6 +624,12 @@ IMPLEMENTATION_COMPLETED 전송 전 반드시 다음 5단계 증거를 확보하
 
 증거 없는 완료 주장은 절대 금지합니다.
 
+=== Completion Promise 경고 (v22.1) ===
+
+IMPLEMENTATION_COMPLETED 선언은 독립 Architect가 외부 검증합니다.
+거짓 완료 신호 전송 시 REJECTED 판정을 받게 됩니다.
+자기 채점만으로 COMPLETED를 선언하지 마세요. 5조건을 실제로 검증한 증거를 포함하세요.
+
 === Zero Tolerance 규칙 ===
 
 다음 행위는 절대 금지합니다:
@@ -536,7 +681,7 @@ install, build, test 등 장시간 명령은 background로 실행하세요:
 
 === Delegation ===
 
-직접 코드를 작성하세요. 추가 subagent를 spawn하지 마세요.
+직접 코드를 작성하세요. 추가 teammate를 spawn하지 마세요.
 이 teammate 내부에서의 에이전트 호출은 금지됩니다.
 ```
 
@@ -554,70 +699,155 @@ install, build, test 등 장시간 명령은 background로 실행하세요:
 
 ---
 
-## Phase 4: CHECK (QA 사이클 + E2E + 이중 검증)
+## Phase 4: CHECK (QA Runner + Architect 진단 + 이중 검증 + E2E)
 
-### Step 4.1: QA 사이클 — Lead 직접 실행 + Executor 수정 위임
+### Step 4.1: QA 사이클 — QA Runner + Architect Root Cause 진단 + Domain-Smart Fix (v22.1)
+
+> **v22.1 핵심 변경**: Lead 직접 QA 실행 → QA Runner teammate 위임 (Lead context 보호).
+> 실패 시 Architect 진단 선행 (맹목적 수정 금지).
 
 ```
+# LIGHT 모드: QA 1회 실행, 실패 시 보고만 (진단/수정 사이클 없음)
+if mode == "LIGHT":
+    Task(subagent_type="qa-tester", name="qa-runner", team_name="pdca-{feature}",
+         model="sonnet", prompt="[Phase 4 QA Runner] 6종 QA 실행. (LIGHT 모드)")
+    SendMessage(type="message", recipient="qa-runner", content="QA 실행 시작.")
+    # 완료 대기 → shutdown_request
+    if QA_PASSED → Step 4.2
+    if QA_FAILED → 실패 보고 + STANDARD 자동 승격 조건 확인
+    return  # LIGHT는 Architect 진단 + Domain Fix 사이클 진입하지 않음
+
+# STANDARD/HEAVY 모드: 아래 QA 사이클 적용
 failure_history = []  # 실패 기록 배열 (Lead 메모리에서 관리)
-max_cycles = LIGHT:1 / STANDARD:3 / HEAVY:5
+max_cycles = STANDARD:3 / HEAVY:5
 cycle = 0
 
 while cycle < max_cycles:
   cycle += 1
 
-  # Step A: Lead 직접 QA 실행
-  # Python 프로젝트
-  Bash("ruff check src/ --fix")        → lint_result
-  Bash("pytest tests/ -v")             → test_result
-  # Node.js 프로젝트 (해당 시)
-  Bash("npm run build")                → build_result
-  Bash("npm test")                     → test_result
-  # TypeScript (해당 시)
-  Bash("npx tsc --noEmit")             → type_result
+  # Step A: QA Runner Teammate (Lead context 보호)
+  Task(subagent_type="qa-tester", name="qa-runner-{cycle}",
+       team_name="pdca-{feature}", model="sonnet",
+       prompt="[Phase 4 QA Runner] 6종 QA 실행.
+               === 6종 QA Goal ===
+               1. lint: ruff check src/ --fix (Python) / eslint (JS/TS)
+               2. test: pytest tests/ -v (Python) / jest/vitest (JS/TS)
+               3. build: npm run build / pip install -e . (해당 시)
+               4. typecheck: mypy (Python, 설정 시) / tsc --noEmit (TS)
+               5. custom: '{custom_pattern}' (--custom 옵션 시만)
+               6. interactive: tmux 테스트 (--interactive 옵션 시만)
 
-  모든 검사 통과 → Step 4.2 (이중 검증) 진입
+               각 goal에 대해 실행 → 결과 수집 → PASS/FAIL 판정.
+               해당하지 않는 goal (예: Python 프로젝트의 eslint)은 SKIP 처리.
 
-  실패 발견 →
-    # Step B: 실패 기록 + Same Failure 3x 검사
-    failure_entry = {
-      "cycle": cycle,
-      "type": "lint|test|build|type",
-      "detail": "{실패 상세}",
-      "signature": "{실패 식별 시그니처}"
-    }
-    failure_history.append(failure_entry)
+               모든 goal PASS 시 → QA_PASSED 메시지 전송
+               1개라도 FAIL 시 → QA_FAILED 메시지 전송 (실패 goal, 에러 상세, 실패 시그니처 포함)
 
-    # Same Failure 3x 감지
-    same_failures = [f for f in failure_history if f.signature == failure_entry.signature]
-    if len(same_failures) >= 3:
-      → QA 사이클 조기 종료
-      → "[Phase 4] 동일 실패 3회 감지: {signature}. Root cause: {analysis}. 수동 개입 필요." 출력
-      → 사용자에게 수동 개입 요청
-      → Phase 4 종료 (Phase 5로 미진입)
+               메시지 형식:
+               QA_PASSED: { 'goals': [{goal, status, output}] }
+               QA_FAILED: { 'goals': [{goal, status, output, signature}], 'failed_count': N }")
+  SendMessage(type="message", recipient="qa-runner-{cycle}", content="QA 실행 시작.")
+  # 완료 대기 → shutdown_request
 
-    # Step C: Executor Teammate 수정 위임
-    Task(subagent_type="executor", name="fixer-{cycle}",
+  # Lead: QA Runner 결과 판정
+  if QA_PASSED:
+      → Step 4.2 (이중 검증) 진입
+
+  if QA_FAILED:
+    # Step B: 실패 기록 + Exit Condition 검사
+    for each failed_goal in qa_result.goals:
+      failure_entry = {
+        "cycle": cycle,
+        "type": failed_goal.goal,
+        "detail": failed_goal.output,
+        "signature": failed_goal.signature
+      }
+      failure_history.append(failure_entry)
+
+    # Exit Condition 1: Environment Error (PATH, 도구 미설치 등)
+    if qa_result contains environment error pattern:
+        → 즉시 중단 + "[Phase 4] 환경 오류 감지: {detail}. 환경 설정 필요." 출력
+        → Phase 4 종료
+
+    # Exit Condition 2: Same Failure 3x
+    for each failure in failure_history:
+      same_failures = [f for f in failure_history if f.signature == failure.signature]
+      if len(same_failures) >= 3:
+        → 조기 종료 + "[Phase 4] 동일 실패 3회: {signature}. Root cause 보고." 출력
+        → Phase 4 종료
+
+    # Step C: Architect Root Cause 진단 (MANDATORY — 맹목적 수정 금지)
+    Task(subagent_type="architect", name="diagnostician-{cycle}",
          team_name="pdca-{feature}", model="sonnet",
-         prompt="QA 실패 수정.
-                 실패 유형: {failure_type}
-                 실패 상세: {failure_detail}
+         prompt="[Phase 4 Architect Diagnostician] QA 실패 Root Cause 분석.
+                 실패 내역: {qa_failed_details}
+                 이전 실패 이력: {failure_history 요약}
+
+                 반드시 다음 3가지를 출력하세요:
+                 DIAGNOSIS: {root cause 1줄 요약}
+                 FIX_GUIDE: {구체적 수정 지시 — 파일명:라인 수준}
+                 DOMAIN: {UI|build|test|security|logic|other}
+
+                 진단 없이 '이것저것 시도해보세요' 식의 모호한 지시는 금지.
+                 Root cause를 정확히 식별한 후 수정 방향을 제시하세요.")
+    SendMessage(type="message", recipient="diagnostician-{cycle}", content="Root cause 진단 시작.")
+    # 완료 대기 → shutdown_request
+
+    # Step D: Domain-Smart Fix (Architect 진단 기반)
+    domain = diagnostician 메시지에서 DOMAIN 추출
+    diagnosis = diagnostician 메시지에서 DIAGNOSIS 추출
+    fix_guide = diagnostician 메시지에서 FIX_GUIDE 추출
+
+    # Domain Routing
+    domain_agent_map = {
+        "UI": "designer", "component": "designer", "style": "designer",
+        "build": "build-fixer", "compile": "build-fixer", "type": "build-fixer",
+        "test": "executor", "coverage": "executor",
+        "security": "security-reviewer",
+        "logic": "executor", "other": "executor"
+    }
+    agent_type = domain_agent_map.get(domain, "executor")
+
+    Task(subagent_type=agent_type, name="fixer-{cycle}",
+         team_name="pdca-{feature}", model="sonnet",
+         prompt="[Phase 4 Domain Fix] 진단 기반 QA 실패 수정.
+                 DIAGNOSIS: {diagnosis}
+                 FIX_GUIDE: {fix_guide}
+                 DOMAIN: {domain}
                  이전 실패 이력: {failure_history 요약}
                  수정 후 해당 검사를 재실행하여 통과를 확인하세요.")
-    SendMessage(type="message", recipient="fixer-{cycle}", content="QA 실패 수정 시작.")
+    SendMessage(type="message", recipient="fixer-{cycle}", content="진단 기반 수정 시작.")
     # 완료 대기 → shutdown_request
 
     → 다음 cycle로 (Step A 재실행)
+
+# Exit Condition 3: Max Cycles 도달
+→ "[Phase 4] QA {max_cycles}회 도달. 미해결: {remaining_issues}" 출력
+→ 사용자에게 미해결 이슈 보고
 ```
 
-### Same Failure 3x 조기 종료
+### 4종 Exit Conditions 상세
 
-| 항목 | 설명 |
-|------|------|
-| 실패 시그니처 | `{failure_type}:{핵심 에러 메시지}` (예: `test:test_coordinator::test_heavy_mode FAILED`) |
-| 동일 판정 | 시그니처가 정확히 일치하는 실패가 3회 누적 |
-| 조기 종료 출력 | `"[Phase 4] 동일 실패 3회 감지: {signature}. Root cause: {analysis}. 수동 개입 필요."` |
-| 후속 처리 | Phase 5로 진입하지 않음. 사용자에게 실패 보고서 제공 |
+| 우선순위 | 조건 | 감지 방법 | 처리 |
+|:--------:|------|----------|------|
+| 1 | Environment Error | QA Runner가 "command not found", "PATH", "not installed" 패턴 보고 | 즉시 중단 + 환경 문제 보고 |
+| 2 | Same Failure 3x | failure_history 내 동일 signature 3회 누적 | 조기 종료 + root cause 보고 |
+| 3 | Max Cycles 도달 | cycle >= max_cycles | 미해결 이슈 목록 보고 |
+| 4 | Goal Met | QA_PASSED 수신 | Step 4.2 이중 검증 진입 |
+
+### Interactive Testing (v22.1 신규, --interactive 옵션 시)
+
+`--interactive` 옵션 시 QA Runner의 goal 6(interactive)이 활성화됩니다:
+
+```
+# QA Runner 내부에서 직접 실행 (goal 6)
+# tmux new-session -d -s qa-test
+# tmux send-keys -t qa-test '명령어' Enter
+# tmux capture-pane -t qa-test -p
+# 결과를 QA_PASSED/QA_FAILED 형식으로 보고
+```
+
+> **주의**: Interactive testing은 tmux가 설치된 환경에서만 작동합니다.
 
 ### Step 4.2: 이중 검증 (순차 teammate - context 분리)
 
@@ -640,9 +870,9 @@ SendMessage(type="message", recipient="verifier", content="검증 시작. APPROV
 # verifier 완료 대기 → shutdown_request
 
 # 2. gap-detector teammate (verifier 완료 후 spawn)
-Task(subagent_type="bkit:gap-detector", name="gap-checker", team_name="pdca-{feature}",
+Task(subagent_type="architect", name="gap-checker", team_name="pdca-{feature}",
      model="sonnet",
-     prompt="docs/02-design/{feature}.design.md와 실제 구현 코드 간 일치도 분석. 90% 기준.")
+     prompt="[Gap Analysis] docs/02-design/{feature}.design.md와 실제 구현 코드 간 일치도 분석. 설계 문서의 각 항목을 코드에서 검증하고 일치율(0-100%)을 산출하세요. 90% 기준.")
 SendMessage(type="message", recipient="gap-checker", content="갭 분석 시작. 완료 후 TaskUpdate 처리.")
 # gap-checker 완료 대기 → shutdown_request
 
@@ -658,18 +888,25 @@ SendMessage(type="message", recipient="gap-checker", content="갭 분석 시작.
 # else:
 #     analyzer_prompt = "구현 코드의 품질, 보안, 성능 이슈 분석."
 #
-Task(subagent_type="bkit:code-analyzer", name="quality-checker", team_name="pdca-{feature}",
+Task(subagent_type="code-reviewer", name="quality-checker", team_name="pdca-{feature}",
      model="sonnet",
      prompt=analyzer_prompt)  # ← React/Next.js 프로젝트일 때만 Vercel BP 규칙 포함
 SendMessage(type="message", recipient="quality-checker", content="코드 품질 분석 시작. 완료 후 TaskUpdate 처리.")
 # quality-checker 완료 대기 → shutdown_request
 ```
 
-**HEAVY 모드: 동일 (순차 teammate, opus)**
+**HEAVY 모드: 동일 구조 (순차 teammate, sonnet)**
+
+HEAVY 모드에서는 Architect, gap-detector, code-analyzer 모두 `model="sonnet"` 사용 (--opus 시 opus):
+```
+Task(subagent_type="architect", name="verifier", ..., model="sonnet", ...)  # --opus 시 model="opus"
+Task(subagent_type="code-reviewer", name="gap-checker", ..., model="sonnet", ...)  # --opus 시 model="opus"
+Task(subagent_type="code-reviewer", name="quality-checker", ..., model="sonnet", ...)  # --opus 시 model="opus"
+```
 
 - Architect: 기능 완성도 검증 (APPROVE/REJECT)
-- gap-detector: 설계-구현 일치도 검증 (0-100%)
-- code-analyzer: 코드 품질, 보안, 성능 분석 + Vercel BP (해당 시)
+- gap-checker: 설계-구현 일치도 검증 (0-100%)
+- quality-checker: 코드 품질, 보안, 성능 분석 + Vercel BP (해당 시)
 
 ### Step 4.3: E2E 검증 (Playwright 있을 때만)
 
@@ -680,7 +917,7 @@ npx playwright test --reporter=list
 ```
 
 **실패 시:**
-1. `--strict` 옵션으로 상세 로그 수집
+1. Playwright `--reporter=line` 옵션으로 상세 로그 수집
 2. `/debug` 스킬 호출 (D0-D4 Phase 디버깅)
 3. 실패 원인 수정 후 재실행
 
@@ -750,6 +987,32 @@ Phase 4 Step 4.2에서 code-analyzer teammate prompt에 동적 주입하는 규�
 
 ## Phase 5: ACT (결과 기반 자동 실행 - "Recommended" 출력 금지)
 
+### Phase 4↔5 루프 가드
+
+```
+phase4_reentry_count = 0  # Lead 메모리에서 관리
+MAX_PHASE4_REENTRY = 3
+
+# Phase 5 → Phase 4 재진입 시
+phase4_reentry_count += 1
+if phase4_reentry_count >= MAX_PHASE4_REENTRY:
+    → "[Phase 5] Phase 4 재진입 {MAX_PHASE4_REENTRY}회 초과. 미해결 이슈 보고 후 종료." 출력
+    → TeamDelete()
+```
+
+### 누적 iteration 추적 (Lead 메모리)
+
+```
+cumulative_iteration_count = 0  # Phase 4-5 전체 누적
+MAX_CUMULATIVE_ITERATIONS = 5
+
+# pdca-iterator 또는 executor 수정 실행 시
+cumulative_iteration_count += 1
+if cumulative_iteration_count >= MAX_CUMULATIVE_ITERATIONS:
+    → "[Phase 5] 누적 {MAX_CUMULATIVE_ITERATIONS}회 개선 시도 초과. 최종 결과 보고." 출력
+    → writer(reporter) → TeamDelete()
+```
+
 | Check 결과 | 자동 실행 | 다음 |
 |-----------|----------|------|
 | gap < 90% | pdca-iterator teammate (최대 5회 반복) | Phase 4 재실행 |
@@ -758,16 +1021,17 @@ Phase 4 Step 4.2에서 code-analyzer teammate prompt에 동적 주입하는 규�
 
 **Case 1: gap < 90%**
 ```
-Task(subagent_type="bkit:pdca-iterator", name="iterator", team_name="pdca-{feature}",
+Task(subagent_type="executor", name="iterator", team_name="pdca-{feature}",
      model="sonnet",
-     prompt="설계-구현 갭을 90% 이상으로 개선하세요. 최대 5회 반복.")
+     prompt="[Gap Improvement] 설계-구현 갭을 90% 이상으로 개선하세요. gap-checker 결과에서 미구현/불일치 항목을 식별하고 순차적으로 수정하세요. 최대 5회 반복.")
 SendMessage(type="message", recipient="iterator", content="갭 자동 개선 시작.")
 # 완료 대기 → shutdown_request → Phase 4 재실행
 ```
 
 **Case 2: gap >= 90% + APPROVE**
 ```
-Task(subagent_type="bkit:report-generator", name="reporter", team_name="pdca-{feature}",
+# 보고서 모델: 모든 복잡도에서 haiku (단순 보고서)
+Task(subagent_type="writer", name="reporter", team_name="pdca-{feature}",
      model="haiku",
      prompt="PDCA 사이클 완료 보고서를 생성하세요.
      포함: Plan 요약, Design 요약, 구현 결과, Check 결과, 교훈
@@ -805,7 +1069,7 @@ python -m lib.slack history "<채널ID>" --limit 100 --json
 **Step 3: 메시지 분석 (Analyst Teammate)**
 ```
 Task(subagent_type="analyst", name="slack-analyst", team_name="pdca-{feature}",
-     model="opus",
+     model="sonnet",
      prompt="SLACK CHANNEL ANALYSIS
      채널: <채널ID>
      분석 항목: 주요 토픽, 핵심 결정사항, 공유 문서 링크, 참여자 역할, 미해결 이슈, 기술 스택
@@ -851,7 +1115,7 @@ cd C:\claude && python -m lib.gmail status --json
 **Step 3: 메일 분석 (Analyst Teammate)**
 ```
 Task(subagent_type="analyst", name="gmail-analyst", team_name="pdca-{feature}",
-     model="opus",
+     model="sonnet",
      prompt="GMAIL ANALYSIS
      분석 항목: 요청사항/할일 추출, 발신자 우선순위, 회신 필요 메일, 첨부파일, 키워드 연관성, 리스크
      출력: 구조화된 이메일 분석 문서 (마크다운)")
@@ -914,12 +1178,24 @@ SendMessage(type="message", recipient="gmail-analyst", content="Gmail 분석 요
 - TDD 강제 규칙
 
 **v20.1 변경:**
-- 모든 subagent 호출을 Agent Teams in-process 방식으로 전환
+- 모든 에이전트 호출을 Agent Teams in-process 방식으로 전환
 - Context 분리로 compact 실패 문제 근본 해결
 - TeamCreate/TeamDelete 라이프사이클 추가
 - Phase 2 DESIGN: architect(READ-ONLY) → executor/executor-high(Write 가능)로 교체
 - LIGHT Phase 4: Architect 검증 추가 (gap-detector는 스킵)
 - 토큰 사용량 약 1.5-2배 증가 (독립 context 비용)
+
+**v22.1 변경:**
+- Phase 1: Graduated Plan Review (LIGHT=Lead QG, STANDARD=Critic-Lite, HEAVY=QG1-4 구조화)
+- Phase 3: Step 3.2 Architect Verification Gate (STANDARD/HEAVY 필수, 외부 검증)
+- Phase 3: Step 3.3 Domain-Smart Fix Routing (designer/build-fixer/security-reviewer/executor)
+- Phase 3: impl-manager Completion Promise 경고 추가
+- Phase 4: QA Runner teammate로 Lead context 보호 (Lead 직접 QA → 위임)
+- Phase 4: 6종 QA Goal (lint, test, build, typecheck, custom, interactive)
+- Phase 4: Architect Root Cause 진단 필수 (맹목적 수정 금지)
+- Phase 4: 4종 Exit Conditions 명시화 (Environment/Same3x/MaxCycles/GoalMet)
+- Phase 4: Domain-Smart Fix Routing (Phase 3과 동일 패턴)
+- Frontmatter agents 추가: qa-tester, build-fixer, security-reviewer, designer
 
 **v21.0 변경:**
 - `/auto` 내부 Skill() 호출 완전 제거 (ralplan, ralph, ultraqa → Agent Teams 단일 패턴)
@@ -930,6 +1206,15 @@ SendMessage(type="message", recipient="gmail-analyst", content="Gmail 분석 요
 - State 파일 의존 0개 (Agent Teams lifecycle으로 대체)
 - Stop Hook 충돌 자연 해소 (state 파일 미생성)
 - `pdca-status.json`: `ralphIteration` → `implManagerIteration` 필드 변경
+
+**v23.0 변경 (Sonnet 4.6 통합):**
+- 모든 복잡도 모드에서 기본 model="sonnet" (Sonnet 4.6 = Opus-level @ $3/$15)
+- HEAVY 모드: opus → sonnet 전면 교체 (HEAVY 비용 ~78% 절감)
+- `--opus` 플래그 신설: HEAVY 핵심 에이전트 Opus 에스컬레이션 (on-demand)
+- Critic 피드백 제한: 1,500t → 5,000t (1M context window 활용)
+- Context 관리: 1M context window으로 compact 빈도 대폭 감소
+- Phase 5 Writer: STANDARD/HEAVY sonnet → haiku (보고서는 simple task)
+- executor-high: subagent_type 유지, model 파라미터만 sonnet으로 변경 (system prompt 보존)
 
 ---
 
@@ -965,14 +1250,15 @@ Resume 시:
 
 ### Agent Teams Context 장점
 
-| 기존 (subagent) | 신규 (Agent Teams) |
+| 기존 (단일 context) | 신규 (Agent Teams) |
 |-----------------|-------------------|
 | 결과가 Lead context에 합류 → overflow | 결과가 Mailbox로 전달 → Lead context 보호 |
 | foreground 3개 상한 필요 | 제한 없음 (독립 context) |
 | "5줄 요약" 강제 필요 | 불필요 (context 분리) |
 | compact 실패 위험 | compact 실패 없음 |
 
-Context limit 발생 시: `claude --continue` 또는 `/clear` 후 `/auto resume`
+Context 관리 (v23.0): Sonnet 4.6의 1M context window로 대부분의 PDCA 세션을 단일 context에서 완료 가능. compact 빈도 대폭 감소.
+극단적 장시간 세션 시: `claude --continue` 또는 `/clear` 후 `/auto resume`
 
 ---
 

@@ -14,7 +14,7 @@ Executor (Low Tier) - Simple Task Executor
 
 Fast execution for trivial, single-file tasks. Work ALONE - no delegation. Optimized for speed and cost-efficiency.
 
-**Note to Orchestrators**: When delegating to this agent, use the Worker Preamble Protocol (`wrapWithPreamble()` from `src/agents/preamble.ts`) to ensure this agent executes tasks directly without spawning sub-agents.
+직접 실행 전용. 다른 에이전트 spawn 금지 (Task tool 사용 불가).
 </Tier_Identity>
 
 <Complexity_Boundary>

@@ -1,8 +1,8 @@
 ---
 name: designer-high
-description: Complex UI architecture and design systems (Opus)
+description: Complex UI architecture and design systems (Sonnet)
 tools: Read, Glob, Grep, Edit, Write, Bash
-model: opus
+model: sonnet
 ---
 
 <Inherits_From>

@@ -1,7 +1,7 @@
 ---
 name: scientist-high
-description: Complex research, hypothesis testing, and ML specialist (Opus)
-model: opus
+description: Complex research, hypothesis testing, and ML specialist (Sonnet)
+model: sonnet
 tools: Read, Glob, Grep, Bash, python_repl
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: qa-tester-high
-description: Comprehensive production-ready QA testing with Opus
-model: opus
+description: Comprehensive production-ready QA testing (Sonnet)
+model: sonnet
 tools: Bash, Read, Grep, Glob, TodoWrite
 ---
 

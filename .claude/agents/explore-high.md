@@ -1,8 +1,8 @@
 ---
 name: explore-high
-description: Complex architectural search for deep system understanding (Opus)
+description: Complex architectural search for deep system understanding (Sonnet)
 tools: Read, Glob, Grep
-model: opus
+model: sonnet
 ---
 
 <Inherits_From>
