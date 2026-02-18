@@ -6,27 +6,6 @@ from ultimate_debate.consensus.protocol import ConsensusChecker
 from ultimate_debate.engine import UltimateDebate
 
 
-@pytest.mark.asyncio
-async def test_debate_with_mock_clients():
-    """Test debate engine with mock AI clients."""
-    from unittest.mock import patch
-
-    debate = UltimateDebate(
-        task="Analyze the best approach for caching",
-        max_rounds=2,
-        consensus_threshold=0.8,
-        include_claude_self=False,  # Claude 자체 참여 비활성화
-    )
-
-    # Mock으로 분석 결과 직접 주입 (Phase A: mock fallback 제거됨)
-    with patch.object(debate, 'run_parallel_analysis') as mock_analysis:
-        mock_analysis.return_value = debate._mock_parallel_analysis()
-        result = await debate.run()
-
-    assert result["status"] in ["FULL_CONSENSUS", "PARTIAL_CONSENSUS", "NO_CONSENSUS"]
-    assert result["total_rounds"] <= 2
-    assert "task_id" in result
-    assert "consensus_percentage" in result
 
 
 @pytest.mark.asyncio
@@ -474,23 +453,6 @@ async def test_strict_mode_requires_external_ai():
     assert "외부 AI" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
-async def test_mock_methods_not_called_in_run():
-    """Test that mock methods are never called during normal run()."""
-    from unittest.mock import patch
-    from ultimate_debate.engine import NoAvailableClientsError
-
-    debate = UltimateDebate(
-        task="Test",
-        include_claude_self=False,
-    )
-
-    with patch.object(debate, '_mock_parallel_analysis') as mock_method:
-        with pytest.raises(NoAvailableClientsError):
-            await debate.run()
-
-        # Mock 메서드가 호출되지 않았는지 확인
-        mock_method.assert_not_called()
 
 
 # Phase B Tests: Preflight Health Check
@@ -643,3 +605,103 @@ async def test_run_parallel_analysis_filters_invalid():
     assert "gemini" not in analyses
     assert "gemini" in debate.failed_clients
     assert "무결성 검증 실패" in debate.failed_clients["gemini"]
+
+
+@pytest.mark.asyncio
+async def test_cross_review_graceful_failure():
+    """Test that cross review handles individual client failures gracefully."""
+    from unittest.mock import AsyncMock
+
+    debate = UltimateDebate(
+        task="Test graceful failure",
+        include_claude_self=True,
+    )
+    debate.set_claude_analysis({
+        "analysis": "This is a detailed analysis with more than fifty characters to pass.",
+        "conclusion": "APPROVE",
+        "confidence": 0.9,
+    })
+
+    # GPT: review 성공
+    mock_gpt = AsyncMock()
+    mock_gpt.analyze.return_value = {
+        "analysis": "Detailed GPT analysis result with sufficient length for validation.",
+        "conclusion": "APPROVE",
+        "confidence": 0.88,
+    }
+    mock_gpt.review.return_value = {
+        "feedback": "Good analysis",
+        "agreement_points": ["Point 1"],
+        "disagreement_points": [],
+    }
+    debate.register_ai_client("gpt", mock_gpt)
+
+    # Gemini: review 실패
+    mock_gemini = AsyncMock()
+    mock_gemini.analyze.return_value = {
+        "analysis": "Detailed Gemini analysis result with sufficient length for validation.",
+        "conclusion": "APPROVE",
+        "confidence": 0.85,
+    }
+    mock_gemini.review.side_effect = ConnectionError("API timeout")
+    debate.register_ai_client("gemini", mock_gemini)
+
+    # 먼저 분석 실행
+    await debate.run_parallel_analysis()
+
+    # Cross review 실행 - Gemini 실패해도 에러 없이 진행
+    reviews = await debate.run_cross_review()
+
+    # GPT의 리뷰는 존재, Gemini의 리뷰 실패는 기록
+    assert any("gpt_reviews" in k for k in reviews)
+    assert "gemini" in debate.failed_clients
+
+
+@pytest.mark.asyncio
+async def test_debate_round_graceful_failure():
+    """Test that debate round handles individual client failures gracefully."""
+    from unittest.mock import AsyncMock
+
+    debate = UltimateDebate(
+        task="Test debate failure",
+        include_claude_self=True,
+    )
+    debate.set_claude_analysis({
+        "analysis": "Detailed analysis for debate round testing with enough characters.",
+        "conclusion": "Use Redis",
+        "confidence": 0.9,
+    })
+
+    # GPT: debate 성공
+    mock_gpt = AsyncMock()
+    mock_gpt.analyze.return_value = {
+        "analysis": "Detailed GPT analysis for debate testing with sufficient content.",
+        "conclusion": "Use Redis",
+        "confidence": 0.88,
+    }
+    mock_gpt.debate.return_value = {
+        "updated_position": "Still Redis",
+        "rebuttals": [],
+        "concessions": [],
+    }
+    debate.register_ai_client("gpt", mock_gpt)
+
+    # Gemini: debate 실패
+    mock_gemini = AsyncMock()
+    mock_gemini.analyze.return_value = {
+        "analysis": "Detailed Gemini analysis for debate testing with enough characters.",
+        "conclusion": "Use Memcached",
+        "confidence": 0.8,
+    }
+    mock_gemini.debate.side_effect = ConnectionError("Debate API failed")
+    debate.register_ai_client("gemini", mock_gemini)
+
+    # 분석 먼저 실행
+    await debate.run_parallel_analysis()
+
+    # 토론 실행 - Gemini 실패해도 에러 없이 진행
+    debates = await debate.run_debate_round()
+
+    assert "gpt" in debates
+    assert "gemini" not in debates
+    assert "gemini" in debate.failed_clients

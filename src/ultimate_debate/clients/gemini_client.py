@@ -58,17 +58,19 @@ class GeminiClient(BaseAIClient):
 
     # 모델 성능 랭킹 (높을수록 우수) - API 조회 후 필터링에 사용
     MODEL_CAPABILITY_RANKINGS: dict[str, int] = {
+        "gemini-3-pro-preview": 120,
+        "gemini-3-flash-preview": 110,
         "gemini-2.5-pro": 100,
         "gemini-2.5-flash": 80,
         "gemini-2.0-pro": 70,
-        "gemini-2.0-flash": 60,
+        "gemini-2.0-flash": 60,  # deprecated 2026-03-31
         "gemini-1.5-pro": 50,
         "gemini-1.5-flash": 40,
     }
 
     def __init__(
         self,
-        model_name: str = "gemini-2.5-pro",
+        model_name: str = "gemini-3-pro-preview",
         token_store: TokenStore | None = None,
         project_id: str | None = None,
         location: str = "us-central1",
@@ -500,6 +502,7 @@ class GeminiClient(BaseAIClient):
 in a multi-AI debate.
 Analyze the given task thoroughly and provide your independent assessment.
 
+IMPORTANT: Always respond in English regardless of the input language.
 IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
 
 Response format:
@@ -523,6 +526,7 @@ Response format:
         text = self._extract_text(response)
         parsed = self._parse_json_response(text)
         if parsed is not None:
+            parsed["model_version"] = self.model_name
             return parsed
         logger.warning("Gemini analyze: JSON parse failed, returning raw content")
         return {
@@ -530,6 +534,7 @@ Response format:
             "conclusion": "",
             "confidence": 0.5,
             "key_points": [],
+            "model_version": self.model_name,
         }
 
     @staticmethod
@@ -566,6 +571,7 @@ Response format:
 constructive feedback.
 Clearly distinguish between points of agreement and disagreement.
 
+IMPORTANT: Always respond in English regardless of the input language.
 IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
 
 Response format:
@@ -601,12 +607,14 @@ Confidence: {own_analysis.get('confidence', 'N/A')}"""
         text = self._extract_text(response)
         parsed = self._parse_json_response(text)
         if parsed is not None:
+            parsed["model_version"] = self.model_name
             return parsed
         logger.warning("Gemini review: JSON parse failed, returning raw content")
         return {
             "feedback": text,
             "agreement_points": [],
             "disagreement_points": [],
+            "model_version": self.model_name,
         }
 
     async def debate(
@@ -628,6 +636,7 @@ Confidence: {own_analysis.get('confidence', 'N/A')}"""
         system_prompt = """Participate in debate to refine your position.
 Distinguish between rebuttals and concessions to opposing views.
 
+IMPORTANT: Always respond in English regardless of the input language.
 IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
 
 Response format:
@@ -667,6 +676,7 @@ Opposing Views:
         text = self._extract_text(response)
         parsed = self._parse_json_response(text)
         if parsed is not None:
+            parsed["model_version"] = self.model_name
             return parsed
         logger.warning("Gemini debate: JSON parse failed, returning raw content")
         return {
@@ -677,4 +687,5 @@ Opposing Views:
             },
             "rebuttals": [],
             "concessions": [],
+            "model_version": self.model_name,
         }

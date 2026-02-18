@@ -358,6 +358,7 @@ class OpenAIClient(BaseAIClient):
 in a multi-AI debate.
 Analyze the given task thoroughly and provide your independent assessment.
 
+IMPORTANT: Always respond in English regardless of the input language.
 IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
 
 Response format:
@@ -380,8 +381,11 @@ Response format:
 
         response = await self._call_api(messages, temperature=0.3)
         content = response["choices"][0]["message"]["content"]
+        actual_model = response.get("model", self.model_name)
         try:
-            return json.loads(content)
+            result = json.loads(content)
+            result["model_version"] = actual_model
+            return result
         except json.JSONDecodeError:
             logger.warning("OpenAI analyze: JSON parse failed, returning raw content")
             return {
@@ -389,6 +393,7 @@ Response format:
                 "conclusion": "",
                 "confidence": 0.5,
                 "key_points": [],
+                "model_version": actual_model,
             }
 
     async def review(
@@ -408,6 +413,7 @@ Response format:
 constructive feedback.
 Clearly distinguish between points of agreement and disagreement.
 
+IMPORTANT: Always respond in English regardless of the input language.
 IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
 
 Response format:
@@ -442,14 +448,18 @@ Confidence: {own_analysis.get('confidence', 'N/A')}"""
 
         response = await self._call_api(messages, temperature=0.3)
         content = response["choices"][0]["message"]["content"]
+        actual_model = response.get("model", self.model_name)
         try:
-            return json.loads(content)
+            result = json.loads(content)
+            result["model_version"] = actual_model
+            return result
         except json.JSONDecodeError:
             logger.warning("OpenAI review: JSON parse failed, returning raw content")
             return {
                 "feedback": content,
                 "agreement_points": [],
                 "disagreement_points": [],
+                "model_version": actual_model,
             }
 
     async def debate(
@@ -471,6 +481,7 @@ Confidence: {own_analysis.get('confidence', 'N/A')}"""
         system_prompt = """Participate in debate to refine your position.
 Distinguish between rebuttals and concessions to opposing views.
 
+IMPORTANT: Always respond in English regardless of the input language.
 IMPORTANT: Respond ONLY with valid JSON (no markdown, no code blocks).
 
 Response format:
@@ -509,8 +520,11 @@ Opposing Views:
 
         response = await self._call_api(messages, temperature=0.3)
         content = response["choices"][0]["message"]["content"]
+        actual_model = response.get("model", self.model_name)
         try:
-            return json.loads(content)
+            result = json.loads(content)
+            result["model_version"] = actual_model
+            return result
         except json.JSONDecodeError:
             logger.warning("OpenAI debate: JSON parse failed, returning raw content")
             return {
@@ -521,4 +535,5 @@ Opposing Views:
                 },
                 "rebuttals": [],
                 "concessions": [],
+                "model_version": actual_model,
             }

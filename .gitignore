@@ -27,3 +27,6 @@ uv.lock
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Debate session artifacts (runtime generated)
+.claude/debates/debate_*/

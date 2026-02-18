@@ -12,6 +12,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from ultimate_debate.clients.base import BaseAIClient
@@ -63,6 +64,7 @@ class UltimateDebate:
         consensus_threshold: float = 0.8,
         include_claude_self: bool = True,
         strict: bool = False,
+        debates_dir: Path | None = None,
     ):
         """Initialize debate orchestrator.
 
@@ -76,6 +78,7 @@ class UltimateDebate:
                 API 호출 없이 오케스트레이터 자체가 Claude 역할 수행.
             strict: Strict 모드. True면 외부 AI가 최소 1개 필수.
                 False(기본값)면 include_claude_self=True 시 Claude만으로도 동작.
+            debates_dir: Override debates directory (for testing).
         """
         self.task = task
         self.task_id = task_id or self._generate_task_id()
@@ -86,7 +89,9 @@ class UltimateDebate:
         self.strict = strict
 
         # Initialize components
-        self.context_manager = DebateContextManager(self.task_id)
+        self.context_manager = DebateContextManager(
+            self.task_id, debates_dir=debates_dir
+        )
         self.consensus_checker = ConsensusChecker(threshold=consensus_threshold)
 
         # AI clients (외부 AI만: GPT, Gemini 등)
@@ -445,10 +450,6 @@ class UltimateDebate:
         Returns:
             Dict mapping reviewer-reviewed pair to review result
         """
-        if not self.ai_clients and not self.include_claude_self:
-            # Placeholder: mock reviews
-            return self._mock_cross_review()
-
         reviews = {}
         tasks = []
         review_keys = []
@@ -472,11 +473,19 @@ class UltimateDebate:
                 review_keys.append((reviewer_name, reviewed_name))
 
         if tasks:
-            results = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for (reviewer_name, reviewed_name), result in zip(
                 review_keys, results, strict=True
             ):
+                if isinstance(result, Exception):
+                    logger.warning(
+                        f"{reviewer_name} → {reviewed_name} "
+                        f"cross review failed: {result}"
+                    )
+                    self.failed_clients.setdefault(reviewer_name, str(result))
+                    continue
+
                 key = f"{reviewer_name}_reviews_{reviewed_name}"
                 reviews[key] = result
 
@@ -548,10 +557,6 @@ class UltimateDebate:
         Returns:
             Dict mapping model name to updated position
         """
-        if not self.ai_clients and not self.include_claude_self:
-            # Placeholder: mock debate
-            return self._mock_debate_round()
-
         debates = {}
         tasks = []
         model_names = []
@@ -574,9 +579,16 @@ class UltimateDebate:
             model_names.append(model_name)
 
         if tasks:
-            results = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for model_name, result in zip(model_names, results, strict=True):
+                if isinstance(result, Exception):
+                    logger.warning(
+                        f"{model_name} debate failed: {result}"
+                    )
+                    self.failed_clients.setdefault(model_name, str(result))
+                    continue
+
                 debates[model_name] = result
 
                 # Save to context
@@ -701,63 +713,3 @@ class UltimateDebate:
             "failed_clients": self.failed_clients,
             "context": context_status,
         }
-
-    # Placeholder methods for testing without real AI clients
-    def _mock_parallel_analysis(self) -> dict[str, dict[str, Any]]:
-        """Generate mock parallel analysis results."""
-        models = ["claude", "gpt", "gemini"]
-        analyses = {}
-
-        for model in models:
-            analysis = {
-                "model": model,
-                "analysis": f"Mock analysis from {model}",
-                "conclusion": f"Mock conclusion from {model}",
-                "confidence": 0.85,
-            }
-            analyses[model] = analysis
-            self.context_manager.save_round(self.round, model, analysis)
-
-        self.current_analyses = analyses
-        return analyses
-
-    def _mock_cross_review(self) -> dict[str, dict[str, Any]]:
-        """Generate mock cross-review results."""
-        models = ["claude", "gpt", "gemini"]
-        reviews = {}
-
-        for reviewer in models:
-            for reviewed in models:
-                if reviewer == reviewed:
-                    continue
-
-                review = {
-                    "feedback": f"{reviewer} reviews {reviewed}",
-                    "agreement_points": ["Point 1", "Point 2"],
-                    "disagreement_points": ["Point 3"],
-                }
-                key = f"{reviewer}_reviews_{reviewed}"
-                reviews[key] = review
-
-                self.context_manager.save_cross_review(
-                    self.round, reviewer, reviewed, review
-                )
-
-        return reviews
-
-    def _mock_debate_round(self) -> dict[str, dict[str, Any]]:
-        """Generate mock debate round results."""
-        models = ["claude", "gpt", "gemini"]
-        debates = {}
-
-        for model in models:
-            debate = {
-                "updated_position": f"Updated position from {model}",
-                "rebuttals": ["Rebuttal 1", "Rebuttal 2"],
-                "concessions": ["Concession 1"],
-            }
-            debates[model] = debate
-
-            self.context_manager.save_debate_round(self.round, model, debate)
-
-        return debates

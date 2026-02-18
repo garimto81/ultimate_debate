@@ -9,15 +9,21 @@ from typing import Any
 class DebateContextManager:
     """Manage debate context using markdown files for context efficiency."""
 
-    def __init__(self, task_id: str):
+    DEFAULT_DEBATES_DIR = Path(".claude/debates")
+
+    def __init__(self, task_id: str, debates_dir: Path | None = None):
         """Initialize context manager.
 
         Args:
             task_id: Unique identifier for this debate task
+            debates_dir: Override debates directory (for testing)
         """
         self.task_id = task_id
-        self.base_path = Path(".claude/debates") / task_id
-        self.base_path.mkdir(parents=True, exist_ok=True)
+        self.base_path = (debates_dir or self.DEFAULT_DEBATES_DIR) / task_id
+
+    def _ensure_dir(self, path: Path) -> None:
+        """Lazy directory creation - only when actually writing files."""
+        path.mkdir(parents=True, exist_ok=True)
 
     def save_task(self, task: str, metadata: dict[str, Any] | None = None) -> str:
         """Save initial task description.
@@ -29,6 +35,7 @@ class DebateContextManager:
         Returns:
             Path to saved file
         """
+        self._ensure_dir(self.base_path)
         file_path = self.base_path / "TASK.md"
 
         content = f"""# Task: {self.task_id}
@@ -37,7 +44,7 @@ class DebateContextManager:
 {task}
 
 ## Metadata
-- Created: {metadata.get('created_at', datetime.now().isoformat()) if metadata else datetime.now().isoformat()}
+- Created: {(metadata or {}).get('created_at', datetime.now().isoformat())}
 - Status: {metadata.get('status', 'RUNNING') if metadata else 'RUNNING'}
 - Max Rounds: {metadata.get('max_rounds', 5) if metadata else 5}
 """
@@ -57,7 +64,7 @@ class DebateContextManager:
             Path to saved file
         """
         round_dir = self.base_path / f"round_{round_num:02d}"
-        round_dir.mkdir(exist_ok=True)
+        self._ensure_dir(round_dir)
 
         file_path = round_dir / f"{model}.md"
 
@@ -102,7 +109,7 @@ class DebateContextManager:
             Path to saved file
         """
         review_dir = self.base_path / f"round_{round_num:02d}" / "reviews"
-        review_dir.mkdir(exist_ok=True)
+        self._ensure_dir(review_dir)
 
         file_path = review_dir / f"{reviewer}_reviews_{reviewed}.md"
 
@@ -138,7 +145,9 @@ class DebateContextManager:
         Returns:
             Path to saved file
         """
-        file_path = self.base_path / f"round_{round_num:02d}" / "CONSENSUS.md"
+        consensus_dir = self.base_path / f"round_{round_num:02d}"
+        self._ensure_dir(consensus_dir)
+        file_path = consensus_dir / "CONSENSUS.md"
 
         status = result.get("status", "UNKNOWN")
         agreed_items = result.get("agreed_items", [])
@@ -181,7 +190,7 @@ class DebateContextManager:
             Path to saved file
         """
         debate_dir = self.base_path / f"round_{round_num:02d}" / "debates"
-        debate_dir.mkdir(exist_ok=True)
+        self._ensure_dir(debate_dir)
 
         file_path = debate_dir / f"{model}.md"
 
@@ -216,6 +225,7 @@ class DebateContextManager:
         Returns:
             Path to FINAL.md
         """
+        self._ensure_dir(self.base_path)
         file_path = self.base_path / "FINAL.md"
 
         status = result.get("status", "UNKNOWN")
